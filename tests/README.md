@@ -1,6 +1,6 @@
 # Parser and tokenizer snapshots
 
-Each `cases/*.temporal` file is tokenized and parsed. The generated snapshot records token tags, byte ranges and text, followed by the text AST or parse errors.
+Each `cases/*.temporal` file is tokenized and parsed. The generated snapshot records token tags, byte ranges and text, followed by the AST as an S-expression or parse errors.
 
 Run the complete suite:
 

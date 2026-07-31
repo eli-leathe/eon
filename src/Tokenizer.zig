@@ -39,11 +39,17 @@ pub const Token = struct {
         keyword_and,
         keyword_or,
         keyword_not,
+        keyword_true,
+        keyword_false,
+        keyword_if,
     };
     const all_kws = std.StaticStringMap(Tag).initComptime(.{
         .{ "and", .keyword_and },
         .{ "or", .keyword_or },
         .{ "not", .keyword_not },
+        .{ "true", .keyword_true },
+        .{ "false", .keyword_false },
+        .{ "if", .keyword_if },
     });
 
     pub fn getKeyword(str: []const u8) ?Token.Tag {
@@ -331,7 +337,7 @@ test "tokenize" {
         \\ }//this is a comment
         \\and or not
     , &.{
-        .identifier,
+        .keyword_if,
         .identifier,
         .equal,
         .number_literal,

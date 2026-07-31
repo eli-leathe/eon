@@ -109,7 +109,7 @@ fn usage(writer: *Writer) Writer.Error!void {
         \\
         \\Options:
         \\  -h, --help        Print this help and exit
-        \\  --ast-dump        Dump the parsed AST as text
+        \\  --ast-dump        Dump the parsed AST as an S-expression
         \\  --ast-dump=dot    Dump the parsed AST as Graphviz DOT
         \\
     );

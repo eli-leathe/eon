@@ -1,3 +1,11 @@
+=== empty.temporal ===
+TOKENS
+  eof 0..0 ""
+AST
+(root)
+ERRORS
+  (none)
+
 === errors.temporal ===
 TOKENS
   identifier 0..6 "answer"
@@ -53,37 +61,102 @@ TOKENS
   identifier 125..130 "ready"
   keyword_or 131..133 "or"
   identifier 134..142 "fallback"
-  eof 143..143 ""
+  identifier 144..149 "value"
+  equal 150..151 "="
+  identifier 152..153 "a"
+  minus 154..155 "-"
+  identifier 156..157 "b"
+  minus 158..159 "-"
+  identifier 160..161 "c"
+  slash 162..163 "/"
+  identifier 164..165 "d"
+  slash 166..167 "/"
+  identifier 168..169 "e"
+  identifier 170..175 "value"
+  equal 176..177 "="
+  minus 178..179 "-"
+  identifier 179..180 "a"
+  period 180..181 "."
+  identifier 181..182 "b"
+  period 182..183 "."
+  identifier 183..184 "c"
+  asterisk 185..186 "*"
+  l_paren 187..188 "("
+  identifier 188..189 "d"
+  plus 190..191 "+"
+  identifier 192..193 "e"
+  r_paren 193..194 ")"
+  slash 195..196 "/"
+  identifier 197..198 "f"
+  minus 199..200 "-"
+  identifier 201..202 "g"
+  equal_equal 203..205 "=="
+  identifier 206..207 "h"
+  keyword_and 208..211 "and"
+  identifier 212..213 "i"
+  keyword_or 214..216 "or"
+  identifier 217..218 "j"
+  eof 219..219 ""
 AST
-root
-  declaration "name"
-    identifier "value"
-  declaration "number"
-    number_literal "42"
-  declaration "string"
-    string_literal "\"hello\""
-  declaration "char"
-    char_literal "'x'"
-  declaration "result"
-    bool_or
-      bool_and
-        equal_equal
-          sub
-            div
-              mul
-                negation
-                  field_access "score"
-                    field_access "profile"
-                      identifier "user"
-                group
-                  add
-                    identifier "base"
-                    number_literal "2"
-              identifier "scale"
-            identifier "delta"
-          identifier "target"
-        identifier "ready"
-      identifier "fallback"
+(root
+  (declaration "name"
+    (identifier "value"))
+  (declaration "number"
+    (number_literal "42"))
+  (declaration "string"
+    (string_literal "\"hello\""))
+  (declaration "char"
+    (char_literal "'x'"))
+  (declaration "result"
+    (bool_or
+      (bool_and
+        (equal_equal
+          (sub
+            (div
+              (mul
+                (negation
+                  (field_access "score"
+                    (field_access "profile"
+                      (identifier "user"))))
+                (group
+                  (add
+                    (identifier "base")
+                    (number_literal "2"))))
+              (identifier "scale"))
+            (identifier "delta"))
+          (identifier "target"))
+        (identifier "ready"))
+      (identifier "fallback")))
+  (declaration "value"
+    (sub
+      (sub
+        (identifier "a")
+        (identifier "b"))
+      (div
+        (div
+          (identifier "c")
+          (identifier "d"))
+        (identifier "e"))))
+  (declaration "value"
+    (bool_or
+      (bool_and
+        (equal_equal
+          (sub
+            (div
+              (mul
+                (negation
+                  (field_access "c"
+                    (field_access "b"
+                      (identifier "a"))))
+                (group
+                  (add
+                    (identifier "d")
+                    (identifier "e"))))
+              (identifier "f"))
+            (identifier "g"))
+          (identifier "h"))
+        (identifier "i"))
+      (identifier "j"))))
 ERRORS
   (none)
 
