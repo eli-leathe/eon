@@ -15,6 +15,8 @@ pub const Error = struct {
         expected_prefix_expr,
         chained_comparison_operators,
         expected_suffix_op,
+        ambiguous_negation,
+        expected_declaration_separator,
     };
 };
 

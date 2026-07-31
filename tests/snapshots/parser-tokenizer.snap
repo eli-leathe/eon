@@ -1,3 +1,17 @@
+=== ambiguous-negation.temporal ===
+TOKENS
+  identifier 0..6 "answer"
+  equal 7..8 "="
+  minus 9..10 "-"
+  identifier 10..17 "measure"
+  identifier 18..24 "sample"
+  nl 24..25 "\n"
+  eof 25..25 ""
+AST
+  <unavailable after parse error>
+ERRORS
+  token 2 (minus at 9): parenthesize a negated function application
+
 === empty.temporal ===
 TOKENS
   eof 0..0 ""
@@ -17,6 +31,7 @@ TOKENS
   identifier 19..20 "c"
   equal_equal 21..23 "=="
   identifier 24..25 "d"
+  nl 25..26 "\n"
   eof 26..26 ""
 AST
   <unavailable after parse error>
@@ -28,15 +43,19 @@ TOKENS
   identifier 0..4 "name"
   equal 5..6 "="
   identifier 7..12 "value"
+  nl 12..13 "\n"
   identifier 13..19 "number"
   equal 20..21 "="
   number_literal 22..24 "42"
+  nl 24..25 "\n"
   identifier 25..31 "string"
   equal 32..33 "="
   string_literal 34..41 "\"hello\""
+  nl 41..42 "\n"
   identifier 42..46 "char"
   equal 47..48 "="
   char_literal 49..52 "'x'"
+  nl 52..53 "\n"
   identifier 53..59 "result"
   equal 60..61 "="
   minus 62..63 "-"
@@ -61,6 +80,8 @@ TOKENS
   identifier 125..130 "ready"
   keyword_or 131..133 "or"
   identifier 134..142 "fallback"
+  nl 142..143 "\n"
+  nl 143..144 "\n"
   identifier 144..149 "value"
   equal 150..151 "="
   identifier 152..153 "a"
@@ -72,6 +93,7 @@ TOKENS
   identifier 164..165 "d"
   slash 166..167 "/"
   identifier 168..169 "e"
+  nl 169..170 "\n"
   identifier 170..175 "value"
   equal 176..177 "="
   minus 178..179 "-"
@@ -96,7 +118,30 @@ TOKENS
   identifier 212..213 "i"
   keyword_or 214..216 "or"
   identifier 217..218 "j"
-  eof 219..219 ""
+  nl 218..219 "\n"
+  identifier 219..226 "applied"
+  equal 227..228 "="
+  identifier 229..232 "map"
+  identifier 233..237 "user"
+  period 237..238 "."
+  identifier 238..245 "profile"
+  l_paren 246..247 "("
+  identifier 247..256 "transform"
+  identifier 257..262 "value"
+  r_paren 262..263 ")"
+  plus 264..265 "+"
+  identifier 266..274 "fallback"
+  identifier 275..282 "default"
+  nl 282..283 "\n"
+  identifier 283..290 "negated"
+  equal 291..292 "="
+  minus 293..294 "-"
+  l_paren 294..295 "("
+  identifier 295..302 "measure"
+  identifier 303..309 "sample"
+  r_paren 309..310 ")"
+  nl 310..311 "\n"
+  eof 311..311 ""
 AST
 (root
   (declaration "name"
@@ -156,7 +201,27 @@ AST
             (identifier "g"))
           (identifier "h"))
         (identifier "i"))
-      (identifier "j"))))
+      (identifier "j")))
+  (declaration "applied"
+    (add
+      (apply
+        (apply
+          (identifier "map")
+          (field_access "profile"
+            (identifier "user")))
+        (group
+          (apply
+            (identifier "transform")
+            (identifier "value"))))
+      (apply
+        (identifier "fallback")
+        (identifier "default"))))
+  (declaration "negated"
+    (negation
+      (group
+        (apply
+          (identifier "measure")
+          (identifier "sample"))))))
 ERRORS
   (none)
 
@@ -166,11 +231,13 @@ TOKENS
   keyword_and 11..14 "and"
   keyword_or 15..17 "or"
   keyword_not 18..21 "not"
+  nl 21..22 "\n"
   string_literal 22..30 "\"string\""
   char_literal 31..34 "'c'"
   number_literal 35..37 "12"
   number_literal 38..41 "4.2"
   number_literal 42..46 "1e+3"
+  nl 46..47 "\n"
   equal_equal 47..49 "=="
   equal 50..51 "="
   plus 52..53 "+"
@@ -186,7 +253,10 @@ TOKENS
   r_bracket 72..73 "]"
   l_brace 74..75 "{"
   r_brace 76..77 "}"
+  nl 77..78 "\n"
   invalid 78..92 "@invalid token"
+  nl 92..93 "\n"
+  nl 112..113 "\n"
   eof 113..113 ""
 AST
   <unavailable after parse error>

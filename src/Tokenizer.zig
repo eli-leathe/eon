@@ -98,10 +98,19 @@ pub fn next(self: *Tokenizer) Token {
                     continue :state .invalid;
                 }
             },
-            ' ', '\n', '\t', '\r' => {
+            ' ', '\t' => {
                 self.index += 1;
                 result.loc.start = self.index;
                 continue :state .start;
+            },
+            '\n' => {
+                result.tag = .nl;
+                self.index += 1;
+            },
+            '\r' => {
+                result.tag = .nl;
+                self.index += 1;
+                if (self.buf[self.index] == '\n') self.index += 1;
             },
             '"' => {
                 result.tag = .string_literal;
@@ -264,9 +273,15 @@ pub fn next(self: *Tokenizer) Token {
                     };
                 },
                 '\n' => {
-                    self.index += 1;
+                    result.tag = .nl;
                     result.loc.start = self.index;
-                    continue :state .start;
+                    self.index += 1;
+                },
+                '\r' => {
+                    result.tag = .nl;
+                    result.loc.start = self.index;
+                    self.index += 1;
+                    if (self.buf[self.index] == '\n') self.index += 1;
                 },
                 else => continue :state .line_comment,
             }
@@ -342,7 +357,9 @@ test "tokenize" {
         .equal,
         .number_literal,
         .l_brace,
+        .nl,
         .r_brace,
+        .nl,
         .keyword_and,
         .keyword_or,
         .keyword_not,

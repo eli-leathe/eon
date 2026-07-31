@@ -131,6 +131,8 @@ fn printParseError(writer: *Writer, path: []const u8, ast: *const temporal.Ast, 
         .expected_prefix_expr => try writer.writeAll("expected expression after prefix operator"),
         .chained_comparison_operators => try writer.writeAll("comparison operators cannot be chained"),
         .expected_suffix_op => try writer.writeAll("expected field name after '.'"),
+        .ambiguous_negation => try writer.writeAll("parenthesize a negated function application"),
+        .expected_declaration_separator => try writer.writeAll("expected newline or ';' between declarations"),
     }
     try writer.writeByte('\n');
 }

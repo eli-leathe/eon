@@ -6,3 +6,5 @@ result = -user.profile.score * (base + 2) / scale - delta == target and ready or
 
 value = a - b - c / d / e
 value = -a.b.c * (d + e) / f - g == h and i or j
+applied = map user.profile (transform value) + fallback default
+negated = -(measure sample)

@@ -47,8 +47,11 @@ fn failExpected(p: *Parse, expected: Token.Tag) Error!noreturn {
     return p.fail(.{ .expected_token = expected });
 }
 fn fail(p: *Parse, data: Ast.Error.Data) Error!noreturn {
+    return p.failAt(p.tok_i, data);
+}
+fn failAt(p: *Parse, token: TokenIndex, data: Ast.Error.Data) Error!noreturn {
     @branchHint(.cold);
-    try p.errors.append(p.gpa, .{ .token = p.tok_i, .data = data });
+    try p.errors.append(p.gpa, .{ .token = token, .data = data });
     return error.ParseError;
 }
 fn parseRoot(p: *Parse) Error!void {
@@ -119,16 +122,48 @@ fn parseExprPrecedence(p: *Parse, min_prec: i32) Error!?Ast.Node.Index {
 }
 fn parsePrefixExpr(p: *Parse) Error!?Ast.Node.Index {
     return switch (p.tokenTag(p.tok_i)) {
-        .minus => try p.addNode(.{
-            .main_token = p.nextToken(),
-            .data = .{ .negation = try p.expectPrefixExpr() },
-        }),
+        .minus => {
+            const minus_token = p.nextToken();
+            const operand = try p.expectPrefixExpr();
+            const operand_i: usize = @intCast(@backingInt(operand));
+            switch (p.nodes.items(.data)[operand_i]) {
+                .apply => try p.failAt(minus_token, .ambiguous_negation),
+                else => {},
+            }
+            return try p.addNode(.{
+                .main_token = minus_token,
+                .data = .{ .negation = operand },
+            });
+        },
         else => return p.parsePrimaryExpr(),
     };
 }
 
+fn startsApplicationArg(tag: Token.Tag) bool {
+    return switch (tag) {
+        .char_literal, .number_literal, .string_literal, .identifier, .l_paren => true,
+        else => false,
+    };
+}
+
 fn parsePrimaryExpr(p: *Parse) !?Ast.Node.Index {
-    return try p.parseSuffixExpr();
+    var func = try p.parseSuffixExpr() orelse return null;
+
+    while (startsApplicationArg(p.tokenTag(p.tok_i))) {
+        const arg_token = p.tok_i;
+        const arg = (try p.parseSuffixExpr()).?;
+
+        func = try p.addNode(.{
+            // Application has no explicit operator token.
+            .main_token = arg_token,
+            .data = .{ .apply = .{
+                .func = func,
+                .arg = arg,
+            } },
+        });
+    }
+
+    return func;
 }
 fn parseSuffixExpr(p: *Parse) !?Ast.Node.Index {
     var res = try p.parsePrimaryTypeExpr() orelse return null;
@@ -191,10 +226,17 @@ fn parseDeclarations(p: *Parse) Error![]Ast.Node.Index {
     var defs: std.ArrayList(Ast.Node.Index) = .empty;
     defer defs.deinit(p.gpa);
 
+    while (p.eatToken(.nl) orelse p.eatToken(.semicolon) != null) {}
     while (true) {
         switch (p.tokenTag(p.tok_i)) {
             .identifier => try defs.append(p.gpa, try p.expectDeclaration()),
             else => break,
+        }
+
+        switch (p.tokenTag(p.tok_i)) {
+            .eof => break,
+            .nl, .semicolon => while (p.eatToken(.nl) orelse p.eatToken(.semicolon) != null) {},
+            else => try p.fail(.expected_declaration_separator),
         }
     }
 

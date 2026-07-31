@@ -109,6 +109,8 @@ fn writeParseResult(gpa: std.mem.Allocator, source: [:0]const u8, writer: *Write
             .expected_prefix_expr => try writer.writeAll("expected expression after prefix operator\n"),
             .chained_comparison_operators => try writer.writeAll("comparison operators cannot be chained\n"),
             .expected_suffix_op => try writer.writeAll("expected field name after '.'\n"),
+            .ambiguous_negation => try writer.writeAll("parenthesize a negated function application\n"),
+            .expected_declaration_separator => try writer.writeAll("expected newline or ';' between declarations\n"),
         }
     }
 }
