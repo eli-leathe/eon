@@ -1,0 +1,121 @@
+=== errors.temporal ===
+TOKENS
+  identifier 0..6 "answer"
+  equal 7..8 "="
+  identifier 9..10 "a"
+  equal_equal 11..13 "=="
+  identifier 14..15 "b"
+  equal_equal 16..18 "=="
+  identifier 19..20 "c"
+  equal_equal 21..23 "=="
+  identifier 24..25 "d"
+  eof 26..26 ""
+AST
+  <unavailable after parse error>
+ERRORS
+  token 5 (equal_equal at 16): comparison operators cannot be chained
+
+=== expressions.temporal ===
+TOKENS
+  identifier 0..4 "name"
+  equal 5..6 "="
+  identifier 7..12 "value"
+  identifier 13..19 "number"
+  equal 20..21 "="
+  number_literal 22..24 "42"
+  identifier 25..31 "string"
+  equal 32..33 "="
+  string_literal 34..41 "\"hello\""
+  identifier 42..46 "char"
+  equal 47..48 "="
+  char_literal 49..52 "'x'"
+  identifier 53..59 "result"
+  equal 60..61 "="
+  minus 62..63 "-"
+  identifier 63..67 "user"
+  period 67..68 "."
+  identifier 68..75 "profile"
+  period 75..76 "."
+  identifier 76..81 "score"
+  asterisk 82..83 "*"
+  l_paren 84..85 "("
+  identifier 85..89 "base"
+  plus 90..91 "+"
+  number_literal 92..93 "2"
+  r_paren 93..94 ")"
+  slash 95..96 "/"
+  identifier 97..102 "scale"
+  minus 103..104 "-"
+  identifier 105..110 "delta"
+  equal_equal 111..113 "=="
+  identifier 114..120 "target"
+  keyword_and 121..124 "and"
+  identifier 125..130 "ready"
+  keyword_or 131..133 "or"
+  identifier 134..142 "fallback"
+  eof 143..143 ""
+AST
+root
+  declaration "name"
+    identifier "value"
+  declaration "number"
+    number_literal "42"
+  declaration "string"
+    string_literal "\"hello\""
+  declaration "char"
+    char_literal "'x'"
+  declaration "result"
+    bool_or
+      bool_and
+        equal_equal
+          sub
+            div
+              mul
+                negation
+                  field_access "score"
+                    field_access "profile"
+                      identifier "user"
+                group
+                  add
+                    identifier "base"
+                    number_literal "2"
+              identifier "scale"
+            identifier "delta"
+          identifier "target"
+        identifier "ready"
+      identifier "fallback"
+ERRORS
+  (none)
+
+=== tokens.temporal ===
+TOKENS
+  identifier 0..10 "identifier"
+  keyword_and 11..14 "and"
+  keyword_or 15..17 "or"
+  keyword_not 18..21 "not"
+  string_literal 22..30 "\"string\""
+  char_literal 31..34 "'c'"
+  number_literal 35..37 "12"
+  number_literal 38..41 "4.2"
+  number_literal 42..46 "1e+3"
+  equal_equal 47..49 "=="
+  equal 50..51 "="
+  plus 52..53 "+"
+  minus 54..55 "-"
+  asterisk 56..57 "*"
+  slash 58..59 "/"
+  period 60..61 "."
+  colon 62..63 ":"
+  semicolon 64..65 ";"
+  l_paren 66..67 "("
+  r_paren 68..69 ")"
+  l_bracket 70..71 "["
+  r_bracket 72..73 "]"
+  l_brace 74..75 "{"
+  r_brace 76..77 "}"
+  invalid 78..92 "@invalid token"
+  eof 113..113 ""
+AST
+  <unavailable after parse error>
+ERRORS
+  token 1 (keyword_and at 11): expected equal
