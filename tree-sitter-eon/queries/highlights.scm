@@ -28,9 +28,12 @@
   ")"
   "{"
   "}"
+  "["
+  "]"
 ] @punctuation.bracket
 
 [
   "."
   ";"
+  ","
 ] @punctuation.delimiter

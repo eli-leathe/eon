@@ -141,7 +141,7 @@ fn parsePrefixExpr(p: *Parse) Error!?Ast.Node.Index {
 
 fn startsApplicationArg(tag: Token.Tag) bool {
     return switch (tag) {
-        .keyword_true, .keyword_false, .char_literal, .number_literal, .string_literal, .identifier, .l_paren => true,
+        .keyword_true, .keyword_false, .char_literal, .number_literal, .string_literal, .identifier, .l_paren, .l_bracket => true,
         else => false,
     };
 }
@@ -189,6 +189,30 @@ fn parseSuffixOp(p: *Parse, lhs: Ast.Node.Index) !?Ast.Node.Index {
         else => return null,
     }
 }
+fn expectArray(p: *Parse) Error!Ast.Node.Index {
+    const l_bracket = try p.expectToken(.l_bracket);
+    var items: std.ArrayList(Ast.Node.ArrayItem) = .empty;
+    defer items.deinit(p.gpa);
+
+    while (p.eatToken(.nl) != null) {}
+    while (p.tokenTag(p.tok_i) != .r_bracket) {
+        const value = try p.expectExpr();
+        const comma = p.eatToken(.comma);
+        try items.append(p.gpa, .{ .value = value, .comma = comma });
+
+        while (p.eatToken(.nl) != null) {}
+        if (comma == null) break;
+    }
+
+    return try p.addNode(.{
+        .main_token = l_bracket,
+        .data = .{ .array = .{
+            try p.arena.dupe(Ast.Node.ArrayItem, items.items),
+            try p.expectToken(.r_bracket),
+        } },
+    });
+}
+
 fn parsePrimaryTypeExpr(p: *Parse) !?Ast.Node.Index {
     switch (p.tokenTag(p.tok_i)) {
         .keyword_true, .keyword_false => return try p.addNode(.{
@@ -199,6 +223,7 @@ fn parsePrimaryTypeExpr(p: *Parse) !?Ast.Node.Index {
         .number_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .number_literal }),
         .string_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .string_literal }),
         .identifier => return try p.addNode(.{ .main_token = p.nextToken(), .data = .identifier }),
+        .l_bracket => return try p.expectArray(),
         .l_paren => return try p.addNode(.{
             .main_token = p.nextToken(),
             .data = .{ .group = .{

@@ -116,6 +116,35 @@ visible = enabled and false or true
       right: (boolean))))
 
 ==================
+arrays
+==================
+
+inline = [1, base + 1, [true, false]]
+multiline = [
+  first,
+  second,
+]
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (array
+      element: (number)
+      element: (binary_expression
+        left: (identifier)
+        right: (number))
+      element: (array
+        element: (boolean)
+        element: (boolean))))
+  (declaration
+    name: (identifier)
+    value: (array
+      element: (identifier)
+      element: (identifier))))
+
+==================
 comments and semicolons
 ==================
 

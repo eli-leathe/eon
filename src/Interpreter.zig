@@ -45,6 +45,7 @@ pub const Value = union(enum) {
     number: f64,
     char: u21,
     boolean: bool,
+    array: []const Value,
     record: []const Field,
     function: NativeFunction,
 
@@ -59,6 +60,14 @@ pub const Value = union(enum) {
                 try writer.writeByte('\'');
             },
             .boolean => |boolean| try writer.writeAll(if (boolean) "true" else "false"),
+            .array => |items| {
+                try writer.writeByte('[');
+                for (items, 0..) |item, i| {
+                    if (i != 0) try writer.writeAll(", ");
+                    try item.format(writer);
+                }
+                try writer.writeByte(']');
+            },
             .record => |fields| {
                 try writer.writeAll("{");
                 for (fields, 0..) |field, i| {
@@ -162,7 +171,7 @@ ast: Ast,
 bindings: []const Binding,
 node_states: std.AutoHashMap(Ast.Node.Index, NodeState),
 decoded_identifiers: std.AutoHashMap(Ast.TokenIndex, []const u8),
-decode_arena: std.heap.ArenaAllocator,
+arena: std.heap.ArenaAllocator,
 
 pub fn init(gpa: Allocator, ast: Ast) Interpreter {
     return initWithBindings(gpa, ast, &.{});
@@ -174,14 +183,14 @@ pub fn initWithBindings(gpa: Allocator, ast: Ast, bindings: []const Binding) Int
         .bindings = bindings,
         .node_states = .init(gpa),
         .decoded_identifiers = .init(gpa),
-        .decode_arena = .init(gpa),
+        .arena = .init(gpa),
     };
 }
 
 pub fn deinit(self: *Interpreter) void {
     self.node_states.deinit();
     self.decoded_identifiers.deinit();
-    self.decode_arena.deinit();
+    self.arena.deinit();
     self.* = undefined;
 }
 
@@ -194,7 +203,7 @@ fn identifierName(self: *Interpreter, token: Ast.TokenIndex) IdentifierError![]c
     if (!std.mem.startsWith(u8, spelling, "@\"")) return spelling;
     if (self.decoded_identifiers.get(token)) |name| return name;
 
-    const name = std.zig.string_literal.parseAlloc(self.decode_arena.allocator(), spelling[1..]) catch |err| switch (err) {
+    const name = std.zig.string_literal.parseAlloc(self.arena.allocator(), spelling[1..]) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.InvalidLiteral => return error.InvalidIdentifier,
     };
@@ -234,12 +243,20 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
         .string_literal => {
             const spelling = self.nodeSlice(node);
             break :result .{ .value = .{ .string = std.zig.string_literal.parseAlloc(
-                self.decode_arena.allocator(),
+                self.arena.allocator(),
                 spelling,
             ) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidLiteral => return error.InvalidString,
             } } };
+        },
+        .array => |array| {
+            const items, _ = array;
+            const values = try self.arena.allocator().alloc(Value, items.len);
+            for (items, values) |item, *value| {
+                value.* = try expectValue(try self.evaluateNode(item.value));
+            }
+            break :result .{ .value = .{ .array = values } };
         },
         .identifier => {
             const name = try self.identifierName(self.ast.nodeMainToken(node));
@@ -367,7 +384,7 @@ fn valuesEqual(lhs: Value, rhs: Value) error{ValuesNotComparable}!bool {
         .char => |char| char == rhs.char,
         .boolean => |boolean| boolean == rhs.boolean,
         .number => |float| float == rhs.number,
-        .record, .function => error.ValuesNotComparable,
+        .array, .record, .function => error.ValuesNotComparable,
     };
 }
 
@@ -392,6 +409,8 @@ test "evaluate paths and expressions" {
         \\literal_logic = enabled and disabled or true
         \\message = "hello"
         \\letter = 'x'
+        \\items = [base, nested.answer + 1, [true, false]]
+        \\empty = []
     );
     defer ast.deinit(std.testing.allocator) catch unreachable;
     try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
@@ -408,6 +427,12 @@ test "evaluate paths and expressions" {
     try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("literal_logic"));
     try std.testing.expectEqualStrings("hello", (try interpreter.get("message")).string);
     try std.testing.expectEqual(@as(u21, 'x'), (try interpreter.get("letter")).char);
+    const items = (try interpreter.get("items")).array;
+    try std.testing.expectEqual(@as(usize, 3), items.len);
+    try std.testing.expectEqual(Value{ .number = 2 }, items[0]);
+    try std.testing.expectEqual(Value{ .number = 7 }, items[1]);
+    try std.testing.expectEqualSlices(Value, &.{ .{ .boolean = true }, .{ .boolean = false } }, items[2].array);
+    try std.testing.expectEqual(@as(usize, 0), (try interpreter.get("empty")).array.len);
 
     const root_cursor = try interpreter.cursor();
     const nested_cursor = try root_cursor.field("nested");

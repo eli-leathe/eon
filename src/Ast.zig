@@ -31,6 +31,11 @@ pub const Node = struct {
     data: Data,
     main_token: TokenIndex,
 
+    pub const ArrayItem = struct {
+        value: Index,
+        comma: ?TokenIndex,
+    };
+
     pub const Tag = @typeInfo(Data).@"union".tag_type.?;
     pub const Data = union(enum) {
         map: struct { []Index, TokenIndex },
@@ -41,6 +46,7 @@ pub const Node = struct {
         number_literal,
         string_literal,
         identifier,
+        array: struct { []ArrayItem, TokenIndex },
         group: struct { Index, TokenIndex },
         bool_or: struct { lhs: Index, rhs: Index },
         bool_and: struct { lhs: Index, rhs: Index },
@@ -148,6 +154,13 @@ fn writeTextNode(
         .negation => |operand| {
             try writer.writeByte('\n');
             try writeTextNode(ast, writer, operand, depth + 1, false);
+        },
+        .array => |array| {
+            const items, _ = array;
+            for (items) |item| {
+                try writer.writeByte('\n');
+                try writeTextNode(ast, writer, item.value, depth + 1, false);
+            }
         },
         .group => |group| {
             try writer.writeByte('\n');

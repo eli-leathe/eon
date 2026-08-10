@@ -4,6 +4,11 @@ string = "hello"
 char = 'x'
 enabled = true
 disabled = false
+array = [1, base + 2, [true, false]]
+multiline_array = [
+  first,
+  second,
+]
 result = -user.profile.score * (base + 2) / scale - delta == target and ready or fallback
 
 value = a - b - c / d / e

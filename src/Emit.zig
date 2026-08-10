@@ -71,6 +71,14 @@ fn emitValue(value: Value, writer: *Writer, depth: usize) Error!void {
             try writer.writeByte('\'');
         },
         .boolean => |boolean| try writer.writeAll(if (boolean) "true" else "false"),
+        .array => |items| {
+            try writer.writeByte('[');
+            for (items, 0..) |item, i| {
+                if (i != 0) try writer.writeAll(", ");
+                try emitValue(item, writer, depth);
+            }
+            try writer.writeByte(']');
+        },
         .record => |fields| {
             try writer.writeByte('{');
             if (fields.len != 0) {
@@ -85,6 +93,12 @@ fn emitValue(value: Value, writer: *Writer, depth: usize) Error!void {
 }
 
 test "emit key-value document" {
+    const nested_items = [_]Value{ .{ .number = 2 }, .{ .number = 3 } };
+    const items = [_]Value{
+        .{ .number = 1 },
+        .{ .boolean = true },
+        .{ .array = &nested_items },
+    };
     const server_fields = [_]Field{
         .{ .name = "host", .value = .{ .string = "localhost" } },
         .{ .name = "port", .value = .{ .number = 8080 } },
@@ -95,6 +109,7 @@ test "emit key-value document" {
         .{ .name = "if", .value = .{ .number = 3 } },
         .{ .name = "quote\"name", .value = .{ .string = "line\n\"two\"\\" } },
         .{ .name = "quote", .value = .{ .char = '\'' } },
+        .{ .name = "items", .value = .{ .array = &items } },
         .{ .name = "server", .value = .{ .record = &server_fields } },
     };
 
@@ -108,6 +123,7 @@ test "emit key-value document" {
         \\@"if" = 3
         \\@"quote\"name" = "line\n\"two\"\\"
         \\quote = '\''
+        \\items = [1, true, [2, 3]]
         \\server = {
         \\  host = "localhost"
         \\  port = 8080
@@ -128,5 +144,6 @@ test "emit key-value document" {
     try std.testing.expectEqual(Value{ .number = 3 }, try interpreter.get("if"));
     try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
     try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);
+    try std.testing.expectEqual(@as(usize, 3), (try interpreter.get("items")).array.len);
     try std.testing.expectEqual(Value{ .number = 8080 }, try interpreter.get("server.port"));
 }

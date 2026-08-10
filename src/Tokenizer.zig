@@ -28,6 +28,7 @@ pub const Token = struct {
         colon,
         period,
         semicolon,
+        comma,
         l_paren,
         r_paren,
         l_brace,
@@ -54,6 +55,7 @@ pub const Token = struct {
                 .colon => ":",
                 .period => ".",
                 .semicolon => ";",
+                .comma => ",",
                 .l_paren => "(",
                 .r_paren => ")",
                 .l_brace => "{",
@@ -205,6 +207,10 @@ pub fn next(self: *Tokenizer) Token {
             },
             ';' => {
                 result.tag = .semicolon;
+                self.index += 1;
+            },
+            ',' => {
+                result.tag = .comma;
                 self.index += 1;
             },
             '*' => {

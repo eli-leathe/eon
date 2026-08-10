@@ -42,8 +42,9 @@ production = {
 selected_timeout = production.timeout
 ```
 
-Eon currently supports strings, characters, numbers, nested records, field
-access, function application, arithmetic, equality, and boolean operators.
+Eon currently supports strings, characters, numbers, booleans, arrays, nested
+records, field access, function application, arithmetic, equality, and boolean
+operators.
 Line comments start with `//`. Keywords can be used as identifiers with Zig-style
 quoting, such as `@"if" = 1`.
 

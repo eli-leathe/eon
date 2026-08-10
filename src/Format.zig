@@ -64,6 +64,27 @@ const Render = struct {
                 const token = r.ast.nodeMainToken(index);
                 try r.renderToken(token, space);
             },
+            .array => |array| {
+                const items, const r_bracket = array;
+                const multiline = items.len != 0 and items[items.len - 1].comma != null;
+                try r.renderToken(r.ast.nodeMainToken(index), if (multiline) .newline else .none);
+                if (multiline) r.indent += 1;
+
+                for (items) |item| {
+                    try r.renderNode(item.value, .none);
+                    if (item.comma) |comma| {
+                        try r.renderToken(comma, if (multiline) .newline else .space);
+                    }
+                }
+
+                if (multiline) {
+                    try r.prepareToken(r_bracket);
+                    r.indent -= 1;
+                    try r.writePreparedToken(r_bracket, space);
+                } else {
+                    try r.renderToken(r_bracket, space);
+                }
+            },
             .group => |group| {
                 const expr, const r_paren = group;
                 try r.renderToken(r.ast.nodeMainToken(index), .none);
@@ -258,6 +279,37 @@ test "canonical formatting" {
     , output.written());
 }
 
+test "array trailing comma selects multiline formatting" {
+    const source =
+        \\inline=[1,base+1]
+        \\collapsed=[
+        \\  1,
+        \\  2
+        \\]
+        \\multiline=[1,base+1,]
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(), source);
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+    try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
+
+    var output: Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try render(&ast, &output.writer);
+
+    try std.testing.expectEqualStrings(
+        \\inline = [1, base + 1]
+        \\collapsed = [1, 2]
+        \\multiline = [
+        \\  1,
+        \\  base + 1,
+        \\]
+        \\
+    , output.written());
+}
+
 test "comments are recovered from source gaps" {
     const source =
         \\// header
@@ -295,6 +347,7 @@ test "formatting is idempotent" {
     const source =
         \\// heading
         \\value=-(measure sample)+fallback
+        \\items=[1,2,]
     ;
 
     var first_arena = std.heap.ArenaAllocator.init(std.testing.allocator);

@@ -81,10 +81,25 @@ module.exports = grammar({
       $.number,
       $.string,
       $.character,
+      $.array,
       $.parenthesized_expression,
     ),
 
     parenthesized_expression: $ => seq('(', $._expression, ')'),
+
+    array: $ => seq(
+      '[',
+      repeat($._line_break),
+      optional(seq(
+        field('element', $._expression),
+        repeat(seq(',', repeat($._line_break), field('element', $._expression))),
+        choice(
+          seq(',', repeat($._line_break)),
+          repeat($._line_break),
+        ),
+      )),
+      ']',
+    ),
 
     identifier: _ => token(choice(
       /[A-Za-z_][A-Za-z0-9_]*/,
@@ -104,7 +119,8 @@ module.exports = grammar({
     character: _ => token(/'(?:\\[^\r\n\x00-\x1f\x7f]|[^'\\\r\n\x00-\x1f\x7f])*'/),
     comment: _ => token(seq('//', /[^\r\n]*/)),
 
-    _separator: _ => choice(';', /\r?\n/),
+    _line_break: _ => /\r?\n/,
+    _separator: $ => choice(';', $._line_break),
   },
 });
 
