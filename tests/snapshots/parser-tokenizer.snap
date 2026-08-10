@@ -20,7 +20,7 @@ TOKENS
   nl 8..9 "\n"
   identifier 11..16 "first"
   equal 17..18 "="
-  number_literal 19..20 "1"
+  number_literal 19..20 "2"
   nl 20..21 "\n"
   r_brace 21..22 "}"
   nl 22..23 "\n"
@@ -46,7 +46,7 @@ AST
   (declaration "test"
     (map{
       (declaration "first"
-        (number_literal "1"))}))
+        (number_literal "2"))}))
   (declaration "other"
     (map{
       (declaration "second"
@@ -83,6 +83,20 @@ AST
   <unavailable after parse error>
 ERRORS
   token 5 (equal_equal at 16): comparison operators cannot be chained
+
+=== errors2.eon ===
+TOKENS
+  identifier 0..6 "answer"
+  equal 7..8 "="
+  identifier 9..10 "a"
+  equal 11..12 "="
+  identifier 13..14 "b"
+  nl 14..15 "\n"
+  eof 15..15 ""
+AST
+  <unavailable after parse error>
+ERRORS
+  token 3 (equal at 11): expected newline or ';' between declarations
 
 === expressions.eon ===
 TOKENS

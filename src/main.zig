@@ -4,7 +4,12 @@ const Writer = Io.Writer;
 
 const temporal = @import("temporal");
 
-const Mode = enum { none, format, text };
+const Mode = union(enum) {
+    none,
+    format,
+    text,
+    get: []const u8,
+};
 
 pub fn main(init: std.process.Init) u8 {
     var stdout_buffer: [4096]u8 = undefined;
@@ -37,6 +42,8 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
             mode = .format;
         } else if (std.mem.eql(u8, arg, "--ast-dump")) {
             mode = .text;
+        } else if (std.mem.startsWith(u8, arg, "--get=")) {
+            mode = .{ .get = arg[6..] };
         } else if (std.mem.startsWith(u8, arg, "-") and !std.mem.eql(u8, arg, "-")) {
             try stderr.print("error: unrecognized argument: {s}\n", .{arg});
             try usage(stderr);
@@ -74,7 +81,20 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
     switch (mode) {
         .none => {},
         .format => try temporal.Format.render(&ast, stdout),
-        .text => try temporal.AstDump.text(&ast, stdout),
+        .text => try stdout.print("{f}", .{ast}),
+        .get => |what| {
+            var interpreter = temporal.Interpreter.init(init.gpa, ast);
+            defer interpreter.deinit();
+
+            var what_path = try init.gpa.alloc([]const u8, std.mem.countScalar(u8, what, '.') + 1);
+            defer init.gpa.free(what_path);
+            var it = std.mem.splitScalar(u8, what, '.');
+            var i: usize = 0;
+            while (it.next()) |part| : (i += 1) what_path[i] = part;
+
+            const value = try interpreter.get(what_path);
+            try stdout.print("{f}\n", .{value});
+        },
     }
     return 0;
 }
@@ -111,7 +131,7 @@ fn usage(writer: *Writer) Writer.Error!void {
         \\  -h, --help        Print this help and exit
         \\  --format, --fmt   Print canonically formatted source
         \\  --ast-dump        Dump the parsed AST as an S-expression
-        \\  --ast-dump=dot    Dump the parsed AST as Graphviz DOT
+        \\  --get=PATH        Evaluate and print a dot-separated value path
         \\
     );
 }
