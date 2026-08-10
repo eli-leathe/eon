@@ -109,13 +109,7 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
             var interpreter = eon.Interpreter.init(init.gpa, ast);
             defer interpreter.deinit();
 
-            var value_path = try init.gpa.alloc([]const u8, std.mem.countScalar(u8, get.path, '.') + 1);
-            defer init.gpa.free(value_path);
-            var it = std.mem.splitScalar(u8, get.path, '.');
-            var i: usize = 0;
-            while (it.next()) |part| : (i += 1) value_path[i] = part;
-
-            const value = try interpreter.get(value_path);
+            const value = try interpreter.get(get.path);
             try stdout.print("{f}\n", .{value});
         },
         .help => unreachable,
