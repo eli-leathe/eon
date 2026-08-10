@@ -1,0 +1,17 @@
+{
+  "grammars": [
+    {
+      "name": "eon",
+      "camelcase": "Eon",
+      "scope": "source.eon",
+      "path": ".",
+      "file-types": ["eon"],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "UNLICENSED",
+    "description": "Tree-sitter grammar for the Eon configuration language"
+  }
+}

@@ -1,0 +1,85 @@
+==================
+declarations and a map
+==================
+
+name = "demo"
+cores = 4
+server = {
+  host = "localhost"
+  workers = cores * 2
+}
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (string))
+  (declaration
+    name: (identifier)
+    value: (number))
+  (declaration
+    name: (identifier)
+    value: (map
+      (declaration
+        name: (identifier)
+        value: (string))
+      (declaration
+        name: (identifier)
+        value: (binary_expression
+          left: (identifier)
+          right: (number))))))
+
+==================
+expression precedence and application
+==================
+
+value = map user.profile (transform value) + fallback default
+negated = -(measure sample)
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (binary_expression
+      left: (application_expression
+        function: (identifier)
+        argument: (field_expression
+          value: (identifier)
+          field: (identifier))
+        argument: (parenthesized_expression
+          (application_expression
+            function: (identifier)
+            argument: (identifier))))
+      right: (application_expression
+        function: (identifier)
+        argument: (identifier))))
+  (declaration
+    name: (identifier)
+    value: (unary_expression
+      operand: (parenthesized_expression
+        (application_expression
+          function: (identifier)
+          argument: (identifier))))))
+
+==================
+comments and semicolons
+==================
+
+// heading
+first=1; second=first+1 // trailing
+
+---
+
+(source_file
+  (comment)
+  (declaration
+    name: (identifier)
+    value: (number))
+  (declaration
+    name: (identifier)
+    value: (binary_expression
+      left: (identifier)
+      right: (number)))
+  (comment))

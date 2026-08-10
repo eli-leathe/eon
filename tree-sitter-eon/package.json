@@ -1,0 +1,25 @@
+{
+  "name": "tree-sitter-eon",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Eon configuration language",
+  "license": "UNLICENSED",
+  "files": [
+    "grammar.js",
+    "tree-sitter.json",
+    "queries",
+    "src/**"
+  ],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.eon",
+      "file-types": ["eon"]
+    }
+  ]
+}
