@@ -57,20 +57,36 @@ zig build
 Read a value from a configuration file:
 
 ```sh
-./zig-out/bin/eon --get=server.workers config.eon
+./zig-out/bin/eon get server.workers config.eon
 # 8
 ```
 
-Format a file to standard output:
+Format a file to standard output, or update it in place with `-w`:
 
 ```sh
-./zig-out/bin/eon --format config.eon
+./zig-out/bin/eon format config.eon
+./zig-out/bin/eon format -w config.eon
 ```
 
-Other commands and options are listed by:
+Validate a file without producing output:
 
 ```sh
-./zig-out/bin/eon --help
+./zig-out/bin/eon check config.eon
 ```
 
-Run the test suite with `zig build test`.
+Other commands are listed by:
+
+```sh
+./zig-out/bin/eon help
+```
+
+## Editor support
+
+Vim file detection and syntax highlighting live in `editors/vim`. Copy that
+directory's contents into `~/.vim`, or add it to Vim's runtime path.
+
+A Tree-sitter grammar, generated C parser, highlighting queries, and corpus
+tests live in `tree-sitter-eon`. From that directory, run `tree-sitter test`
+to test the grammar.
+
+Run the Eon test suite with `zig build test`.
