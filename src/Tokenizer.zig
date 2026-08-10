@@ -42,6 +42,41 @@ pub const Token = struct {
         keyword_true,
         keyword_false,
         keyword_if,
+
+        pub fn lexeme(tag: Tag) ?[]const u8 {
+            return switch (tag) {
+                .eof => "",
+                .equal => "=",
+                .equal_equal => "==",
+                .plus => "+",
+                .minus => "-",
+                .asterisk => "*",
+                .colon => ":",
+                .period => ".",
+                .semicolon => ";",
+                .l_paren => "(",
+                .r_paren => ")",
+                .l_brace => "{",
+                .r_bracket => "]",
+                .l_bracket => "[",
+                .r_brace => "}",
+                .slash => "/",
+                .keyword_and => "and",
+                .keyword_or => "or",
+                .keyword_not => "not",
+                .keyword_true => "true",
+                .keyword_false => "false",
+                .keyword_if => "if",
+                .invalid,
+                .nl,
+                .whitespace,
+                .identifier,
+                .string_literal,
+                .char_literal,
+                .number_literal,
+                => null,
+            };
+        }
     };
     const all_kws = std.StaticStringMap(Tag).initComptime(.{
         .{ "and", .keyword_and },

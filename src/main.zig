@@ -4,7 +4,7 @@ const Writer = Io.Writer;
 
 const temporal = @import("temporal");
 
-const DumpMode = enum { none, text, dot };
+const Mode = enum { none, format, text };
 
 pub fn main(init: std.process.Init) u8 {
     var stdout_buffer: [4096]u8 = undefined;
@@ -28,15 +28,15 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
     const args = try init.minimal.args.toSlice(arena);
 
     var input_path: ?[]const u8 = null;
-    var dump_mode: DumpMode = .none;
+    var mode: Mode = .none;
     for (args[1..]) |arg| {
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             try usage(stdout);
             return 0;
+        } else if (std.mem.eql(u8, arg, "--format") or std.mem.eql(u8, arg, "--fmt")) {
+            mode = .format;
         } else if (std.mem.eql(u8, arg, "--ast-dump")) {
-            dump_mode = .text;
-        } else if (std.mem.eql(u8, arg, "--ast-dump=dot")) {
-            dump_mode = .dot;
+            mode = .text;
         } else if (std.mem.startsWith(u8, arg, "-") and !std.mem.eql(u8, arg, "-")) {
             try stderr.print("error: unrecognized argument: {s}\n", .{arg});
             try usage(stderr);
@@ -71,10 +71,10 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
         return 1;
     }
 
-    switch (dump_mode) {
+    switch (mode) {
         .none => {},
+        .format => try temporal.Format.render(&ast, stdout),
         .text => try temporal.AstDump.text(&ast, stdout),
-        .dot => try temporal.AstDump.dot(&ast, stdout),
     }
     return 0;
 }
@@ -109,6 +109,7 @@ fn usage(writer: *Writer) Writer.Error!void {
         \\
         \\Options:
         \\  -h, --help        Print this help and exit
+        \\  --format, --fmt   Print canonically formatted source
         \\  --ast-dump        Dump the parsed AST as an S-expression
         \\  --ast-dump=dot    Dump the parsed AST as Graphviz DOT
         \\

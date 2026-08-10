@@ -59,6 +59,35 @@ pub const Node = struct {
 };
 pub const NodeList = std.MultiArrayList(Node);
 
+pub fn tokenTag(self: *const Ast, token_index: TokenIndex) Token.Tag {
+    return self.tokens.items(.tag)[token_index];
+}
+
+pub fn tokenStart(self: *const Ast, token_index: TokenIndex) u32 {
+    return self.tokens.items(.start)[token_index];
+}
+
+pub fn tokenSlice(self: *const Ast, token_index: TokenIndex) []const u8 {
+    const tag = self.tokenTag(token_index);
+    if (tag.lexeme()) |lexeme| return lexeme;
+
+    var tokenizer: Tokenizer = .{
+        .buf = self.source,
+        .index = self.tokenStart(token_index),
+    };
+    const token = tokenizer.next();
+    std.debug.assert(token.tag == tag);
+    return self.source[token.loc.start..token.loc.end];
+}
+
+pub fn nodeData(self: *const Ast, index: Node.Index) Node.Data {
+    return self.nodes.items(.data)[@intCast(@backingInt(index))];
+}
+
+pub fn nodeMainToken(self: *const Ast, index: Node.Index) TokenIndex {
+    return self.nodes.items(.main_token)[@intCast(@backingInt(index))];
+}
+
 pub fn deinit(self: *Ast, gpa: Allocator) Allocator.Error!void {
     self.tokens.deinit(gpa);
     gpa.free(self.errors);
