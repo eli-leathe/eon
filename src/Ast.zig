@@ -36,6 +36,7 @@ pub const Node = struct {
         map: struct { []Index, TokenIndex },
         declaration: struct { lhs: TokenIndex, rhs: Index },
         negation: Index,
+        boolean_literal,
         char_literal,
         number_literal,
         string_literal,
@@ -121,7 +122,7 @@ fn writeTextNode(
     try writer.writeAll(@tagName(std.meta.activeTag(data)));
     switch (data) {
         .declaration => |declaration| try writeTextTokenLabel(ast, writer, declaration.lhs),
-        .char_literal, .number_literal, .string_literal, .identifier => {
+        .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => {
             try writeTextTokenLabel(ast, writer, ast.nodes.items(.main_token)[node_i]);
         },
         .field_access => |field| try writeTextTokenLabel(ast, writer, field.child),
@@ -166,7 +167,7 @@ fn writeTextNode(
             try writeTextNode(ast, writer, apply.func, depth + 1, true);
             try writeTextNode(ast, writer, apply.arg, depth + 1, false);
         },
-        .char_literal, .number_literal, .string_literal, .identifier => {},
+        .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => {},
     }
     try writer.writeByte(')');
     if (trailing_newline) try writer.writeByte('\n');

@@ -141,7 +141,7 @@ fn parsePrefixExpr(p: *Parse) Error!?Ast.Node.Index {
 
 fn startsApplicationArg(tag: Token.Tag) bool {
     return switch (tag) {
-        .char_literal, .number_literal, .string_literal, .identifier, .l_paren => true,
+        .keyword_true, .keyword_false, .char_literal, .number_literal, .string_literal, .identifier, .l_paren => true,
         else => false,
     };
 }
@@ -191,6 +191,10 @@ fn parseSuffixOp(p: *Parse, lhs: Ast.Node.Index) !?Ast.Node.Index {
 }
 fn parsePrimaryTypeExpr(p: *Parse) !?Ast.Node.Index {
     switch (p.tokenTag(p.tok_i)) {
+        .keyword_true, .keyword_false => return try p.addNode(.{
+            .main_token = p.nextToken(),
+            .data = .boolean_literal,
+        }),
         .char_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .char_literal }),
         .number_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .number_literal }),
         .string_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .string_literal }),

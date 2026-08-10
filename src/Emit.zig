@@ -91,6 +91,7 @@ test "emit key-value document" {
     };
     const fields = [_]Field{
         .{ .name = "name", .value = .{ .string = "demo" } },
+        .{ .name = "enabled", .value = .{ .boolean = true } },
         .{ .name = "if", .value = .{ .number = 3 } },
         .{ .name = "quote\"name", .value = .{ .string = "line\n\"two\"\\" } },
         .{ .name = "quote", .value = .{ .char = '\'' } },
@@ -103,6 +104,7 @@ test "emit key-value document" {
 
     try std.testing.expectEqualStrings(
         \\name = "demo"
+        \\enabled = true
         \\@"if" = 3
         \\@"quote\"name" = "line\n\"two\"\\"
         \\quote = '\''
@@ -122,6 +124,7 @@ test "emit key-value document" {
 
     var interpreter = Interpreter.init(std.testing.allocator, ast);
     defer interpreter.deinit();
+    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("enabled"));
     try std.testing.expectEqual(Value{ .number = 3 }, try interpreter.get("if"));
     try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
     try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);

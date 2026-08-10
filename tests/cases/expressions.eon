@@ -2,6 +2,8 @@ name = value
 number = 42
 string = "hello"
 char = 'x'
+enabled = true
+disabled = false
 result = -user.profile.score * (base + 2) / scale - delta == target and ready or fallback
 
 value = a - b - c / d / e

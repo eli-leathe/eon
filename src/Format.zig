@@ -60,7 +60,7 @@ const Render = struct {
                 try r.renderToken(r.ast.nodeMainToken(index), .none);
                 try r.renderNode(operand, space);
             },
-            .char_literal, .number_literal, .string_literal, .identifier => {
+            .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => {
                 const token = r.ast.nodeMainToken(index);
                 try r.renderToken(token, space);
             },

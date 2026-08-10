@@ -3,6 +3,7 @@
 (string) @string
 (character) @character
 (number) @number
+(boolean) @boolean
 
 (identifier) @variable
 (declaration name: (identifier) @property)

@@ -95,6 +95,27 @@ quote = '\''
     value: (character)))
 
 ==================
+boolean literals
+==================
+
+enabled = true
+visible = enabled and false or true
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (boolean))
+  (declaration
+    name: (identifier)
+    value: (binary_expression
+      left: (binary_expression
+        left: (identifier)
+        right: (boolean))
+      right: (boolean))))
+
+==================
 comments and semicolons
 ==================
 

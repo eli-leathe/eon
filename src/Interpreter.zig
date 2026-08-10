@@ -215,6 +215,9 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
     const result: Evaluated = result: switch (self.ast.nodeData(node)) {
         .map => break :result .{ .source_map = node },
         .declaration => unreachable,
+        .boolean_literal => break :result .{ .value = .{
+            .boolean = self.ast.tokenTag(self.ast.nodeMainToken(node)) == .keyword_true,
+        } },
         .char_literal => {
             const spelling = self.nodeSlice(node);
             break :result .{ .value = .{ .char = switch (std.zig.parseCharLiteral(spelling)) {
@@ -384,6 +387,9 @@ test "evaluate paths and expressions" {
         \\fraction = 5 / 2
         \\same = forward == 6
         \\short = same or 1 / 0 == 0
+        \\enabled = true
+        \\disabled = false
+        \\literal_logic = enabled and disabled or true
         \\message = "hello"
         \\letter = 'x'
     );
@@ -397,6 +403,9 @@ test "evaluate paths and expressions" {
     try std.testing.expectEqual(Value{ .number = 6 }, try interpreter.get("nested.answer"));
     try std.testing.expectEqual(Value{ .number = 2.5 }, try interpreter.get("fraction"));
     try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("short"));
+    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("enabled"));
+    try std.testing.expectEqual(Value{ .boolean = false }, try interpreter.get("disabled"));
+    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("literal_logic"));
     try std.testing.expectEqualStrings("hello", (try interpreter.get("message")).string);
     try std.testing.expectEqual(@as(u21, 'x'), (try interpreter.get("letter")).char);
 

@@ -77,6 +77,7 @@ module.exports = grammar({
 
     _primary_expression: $ => choice(
       $.identifier,
+      $.boolean,
       $.number,
       $.string,
       $.character,
@@ -89,6 +90,8 @@ module.exports = grammar({
       /[A-Za-z_][A-Za-z0-9_]*/,
       /@"(?:\\[^\r\n\x00-\x1f\x7f]|[^"\\\r\n\x00-\x1f\x7f])+"/,
     )),
+
+    boolean: _ => choice('true', 'false'),
 
     number: _ => token(choice(
       /0[xX][0-9A-Fa-f_]+(?:\.[0-9A-Fa-f_]+)?(?:[pP][+-]?[0-9A-Za-z_]+)?/,
