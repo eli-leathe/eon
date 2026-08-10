@@ -75,6 +75,9 @@ Validate a file without producing output:
 ./zig-out/bin/eon check config.eon
 ```
 
+Embedded applications can generate key/value documents with `eon.Emit.emit`,
+passing a slice of `eon.Emit.Field` values and an `std.Io.Writer`.
+
 Other commands are listed by:
 
 ```sh
