@@ -85,7 +85,10 @@ module.exports = grammar({
 
     parenthesized_expression: $ => seq('(', $._expression, ')'),
 
-    identifier: _ => /[A-Za-z_][A-Za-z0-9_]*/,
+    identifier: _ => token(choice(
+      /[A-Za-z_][A-Za-z0-9_]*/,
+      /@"[^"\r\n\x00-\x1f\x7f]+"/,
+    )),
 
     number: _ => token(choice(
       /0[xX][0-9A-Fa-f_]+(?:\.[0-9A-Fa-f_]+)?(?:[pP][+-]?[0-9A-Za-z_]+)?/,

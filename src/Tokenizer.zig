@@ -104,6 +104,7 @@ pub fn next(self: *Tokenizer) Token {
         string_literal,
         char_literal,
         identifier,
+        @"@",
         equal,
         slash,
         line_comment,
@@ -159,6 +160,7 @@ pub fn next(self: *Tokenizer) Token {
                 result.tag = .identifier;
                 continue :state .identifier;
             },
+            '@' => continue :state .@"@",
             '0'...'9' => {
                 result.tag = .number_literal;
                 self.index += 1;
@@ -275,6 +277,17 @@ pub fn next(self: *Tokenizer) Token {
                 },
             }
         },
+        .@"@" => {
+            self.index += 1;
+            switch (self.buf[self.index]) {
+                0, '\n' => result.tag = .invalid,
+                '"' => {
+                    result.tag = .identifier;
+                    continue :state .string_literal;
+                },
+                else => continue :state .invalid,
+            }
+        },
         .equal => {
             self.index += 1;
             switch (self.buf[self.index]) {
@@ -386,6 +399,7 @@ test "tokenize" {
         \\if x = 4.2{
         \\ }//this is a comment
         \\and or not
+        \\@"and" @"or" @"not" @"true" @"false" @"if"
     , &.{
         .keyword_if,
         .identifier,
@@ -398,6 +412,13 @@ test "tokenize" {
         .keyword_and,
         .keyword_or,
         .keyword_not,
+        .nl,
+        .identifier,
+        .identifier,
+        .identifier,
+        .identifier,
+        .identifier,
+        .identifier,
     });
 }
 

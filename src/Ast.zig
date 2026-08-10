@@ -81,6 +81,17 @@ pub fn tokenSlice(self: *const Ast, token_index: TokenIndex) []const u8 {
     return self.source[token.loc.start..token.loc.end];
 }
 
+pub fn identifierSlice(self: *const Ast, indent_index: TokenIndex) []const u8 {
+    const tag = self.tokenTag(indent_index);
+    std.debug.assert(tag == .identifier);
+
+    const tok = self.tokenSlice(indent_index);
+    return if (std.mem.startsWith(u8, tok, "@\""))
+        tok[2 .. tok.len - 1]
+    else
+        tok;
+}
+
 pub fn nodeData(self: *const Ast, index: Node.Index) Node.Data {
     return self.nodes.items(.data)[@intCast(@backingInt(index))];
 }

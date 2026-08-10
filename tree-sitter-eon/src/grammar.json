@@ -562,8 +562,20 @@
       ]
     },
     "identifier": {
-      "type": "PATTERN",
-      "value": "[A-Za-z_][A-Za-z0-9_]*"
+      "type": "TOKEN",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "PATTERN",
+            "value": "[A-Za-z_][A-Za-z0-9_]*"
+          },
+          {
+            "type": "PATTERN",
+            "value": "@\"[^\"\\r\\n\\x00-\\x1f\\x7f]+\""
+          }
+        ]
+      }
     },
     "number": {
       "type": "TOKEN",

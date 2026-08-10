@@ -2,4 +2,5 @@ identifier and or not
 "string" 'c' 12 4.2 1e+3
 == = + - * / . : ; ( ) [ ] { }
 @invalid token
+@"or"
 // trailing comment

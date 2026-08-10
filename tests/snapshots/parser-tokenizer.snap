@@ -316,8 +316,10 @@ TOKENS
   nl 77..78 "\n"
   invalid 78..92 "@invalid token"
   nl 92..93 "\n"
-  nl 112..113 "\n"
-  eof 113..113 ""
+  identifier 93..98 "@\"or\""
+  nl 98..99 "\n"
+  nl 118..119 "\n"
+  eof 119..119 ""
 AST
   <unavailable after parse error>
 ERRORS

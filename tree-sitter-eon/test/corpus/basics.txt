@@ -64,6 +64,29 @@ negated = -(measure sample)
           argument: (identifier))))))
 
 ==================
+quoted keyword identifiers
+==================
+
+@"if" = 40
+@"true" = 2
+@"and" = @"if" + @"true"
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (number))
+  (declaration
+    name: (identifier)
+    value: (number))
+  (declaration
+    name: (identifier)
+    value: (binary_expression
+      left: (identifier)
+      right: (identifier))))
+
+==================
 comments and semicolons
 ==================
 

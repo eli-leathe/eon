@@ -146,7 +146,7 @@ pub const MapCursor = struct {
             if (self.index >= declarations.len) return null;
             const declaration = self.interpreter.ast.nodeData(declarations[self.index]).declaration;
             self.index += 1;
-            return self.interpreter.ast.tokenSlice(declaration.lhs);
+            return self.interpreter.ast.identifierSlice(declaration.lhs);
         }
     };
 };
@@ -214,7 +214,7 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
             } };
         },
         .identifier => {
-            const name = self.nodeSlice(node);
+            const name = self.ast.identifierSlice(self.ast.nodeMainToken(node));
             if (self.findDeclaration(.root, name)) |rhs| break :result try self.evaluateNode(rhs);
             for (self.bindings) |binding| {
                 if (std.mem.eql(u8, binding.name, name)) {
@@ -292,7 +292,7 @@ fn findDeclaration(self: *const Interpreter, map: Ast.Node.Index, name: []const 
     };
     for (declarations) |declaration_index| {
         const declaration = self.ast.nodeData(declaration_index).declaration;
-        if (std.mem.eql(u8, name, self.ast.tokenSlice(declaration.lhs))) return declaration.rhs;
+        if (std.mem.eql(u8, name, self.ast.identifierSlice(declaration.lhs))) return declaration.rhs;
     }
     return null;
 }
@@ -389,6 +389,33 @@ test "evaluate paths and expressions" {
         try (try (try root_cursor.field("nested")).field("answer")).value(),
     );
     try std.testing.expectError(error.InvalidPath, root_cursor.field(""));
+}
+
+test "quoted identifiers can use keyword names" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(),
+        \\@"if" = 40
+        \\@"true" = 2
+        \\@"and" = @"if" + @"true"
+        \\nested = {
+        \\  @"or" = @"and"
+        \\}
+    );
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+    try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
+
+    var interpreter = init(std.testing.allocator, ast);
+    defer interpreter.deinit();
+
+    try std.testing.expectEqual(Value{ .number = 40 }, try interpreter.get("if"));
+    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("and"));
+    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("nested.or"));
+
+    const nested_map = try (try (try interpreter.cursor()).field("nested")).map();
+    var fields = nested_map.fields();
+    try std.testing.expectEqualStrings("or", fields.next().?);
+    try std.testing.expectEqual(null, fields.next());
 }
 
 test "map cursor enumerates fields without evaluating them" {
