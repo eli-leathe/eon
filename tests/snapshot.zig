@@ -87,7 +87,7 @@ fn writeParseResult(gpa: std.mem.Allocator, source: [:0]const u8, writer: *Write
 
     try writer.writeAll("AST\n");
     if (ast.errors.len == 0) {
-        try temporal.AstDump.text(&ast, writer);
+        try writer.print("{f}", .{ast});
     } else {
         try writer.writeAll("  <unavailable after parse error>\n");
     }

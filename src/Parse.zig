@@ -63,7 +63,7 @@ fn parseRoot(p: *Parse) Error!void {
     const defs = try p.parseDeclarations();
 
     if (p.tokenTag(p.tok_i) != .eof) try p.failExpected(.eof);
-    p.nodes.items(.data)[0] = .{ .map = defs };
+    p.nodes.items(.data)[0] = .{ .map = .{ defs, p.tok_i } };
 }
 
 const OperInfo = struct {
@@ -217,10 +217,11 @@ fn expectExpr(p: *Parse) Error!Ast.Node.Index {
 fn expectMap(p: *Parse) Error!Ast.Node.Index {
     const map_tok = p.tok_i;
     _ = try p.expectToken(.l_brace);
-    const m = try p.parseDeclarations();
-    _ = try p.expectToken(.r_brace);
 
-    return try p.addNode(.{ .main_token = map_tok, .data = .{ .map = m } });
+    return try p.addNode(.{ .main_token = map_tok, .data = .{ .map = .{
+        try p.parseDeclarations(),
+        try p.expectToken(.r_brace),
+    } } });
 }
 fn expectDeclaration(p: *Parse) Error!Ast.Node.Index {
     const id = try p.expectToken(.identifier);

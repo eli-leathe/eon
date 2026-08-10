@@ -31,73 +31,58 @@ const Render = struct {
     wrote_anything: bool = false,
 
     fn renderRoot(r: *Render) Writer.Error!void {
-        for (r.ast.nodeData(.root).map) |declaration| {
+        for (r.ast.nodeData(.root).map[0]) |declaration| {
             _ = try r.renderNode(declaration, .newline);
         }
         try r.renderGap(r.ast.source.len);
     }
 
-    fn renderNode(r: *Render, index: Ast.Node.Index, space: Space) Writer.Error!Ast.TokenIndex {
+    fn renderNode(r: *Render, index: Ast.Node.Index, space: Space) Writer.Error!void {
         const data = r.ast.nodeData(index);
         switch (data) {
-            .map => |declarations| {
-                var next_token = r.ast.nodeMainToken(index);
-                try r.renderToken(next_token, .newline);
+            .map => |m| {
+                const declarations, const r_brace = m;
+                try r.renderToken(r.ast.nodeMainToken(index), .newline);
                 r.indent += 1;
                 for (declarations) |declaration| {
-                    next_token = try r.renderNode(declaration, .newline);
+                    try r.renderNode(declaration, .newline);
                 }
-
-                const r_brace = blk: {
-                    var token = next_token;
-                    while (switch (r.ast.tokenTag(token)) {
-                        .nl, .semicolon => true,
-                        else => false,
-                    }) token += 1;
-                    break :blk token;
-                };
-                std.debug.assert(r.ast.tokenTag(r_brace) == .r_brace);
-                // Comments before the closing brace belong to the map body and
-                // therefore use the body's indentation.
                 try r.prepareToken(r_brace);
                 r.indent -= 1;
                 try r.writePreparedToken(r_brace, space);
-                return r_brace + 1;
             },
             .declaration => |declaration| {
-                _ = try r.renderToken(declaration.lhs, .space);
-                _ = try r.renderToken(declaration.lhs + 1, .space); // '='
-                return try r.renderNode(declaration.rhs, space);
+                try r.renderToken(declaration.lhs, .space);
+                try r.renderToken(declaration.lhs + 1, .space); // '='
+                try r.renderNode(declaration.rhs, space);
             },
             .negation => |operand| {
-                _ = try r.renderToken(r.ast.nodeMainToken(index), .none);
-                return try r.renderNode(operand, space);
+                try r.renderToken(r.ast.nodeMainToken(index), .none);
+                try r.renderNode(operand, space);
             },
             .char_literal, .number_literal, .string_literal, .identifier => {
                 const token = r.ast.nodeMainToken(index);
                 try r.renderToken(token, space);
-                return token + 1;
             },
             .group => |group| {
+                const expr, const r_paren = group;
                 try r.renderToken(r.ast.nodeMainToken(index), .none);
-                _ = try r.renderNode(group[0], .none);
-                try r.renderToken(group[1], space);
-                return group[1] + 1;
+                try r.renderNode(expr, .none);
+                try r.renderToken(r_paren, space);
             },
             inline .bool_or, .bool_and, .equal, .equal_equal, .add, .sub, .mul, .div => |binary| {
-                _ = try r.renderNode(binary.lhs, .space);
+                try r.renderNode(binary.lhs, .space);
                 try r.renderToken(r.ast.nodeMainToken(index), .space);
-                return try r.renderNode(binary.rhs, space);
+                try r.renderNode(binary.rhs, space);
             },
             .field_access => |field| {
-                _ = try r.renderNode(field.parent, .none);
-                _ = try r.renderToken(r.ast.nodeMainToken(index), .none);
+                try r.renderNode(field.parent, .none);
+                try r.renderToken(r.ast.nodeMainToken(index), .none);
                 try r.renderToken(field.child, space);
-                return field.child + 1;
             },
             .apply => |apply| {
                 _ = try r.renderNode(apply.func, .space);
-                return try r.renderNode(apply.arg, space);
+                try r.renderNode(apply.arg, space);
             },
         }
     }
