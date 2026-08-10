@@ -67,7 +67,7 @@ fn emitValue(value: Value, writer: *Writer, depth: usize) Error!void {
         },
         .char => |char| {
             try writer.writeByte('\'');
-            try writer.printUnicodeCodepoint(char);
+            try std.zig.charEscape(char, writer);
             try writer.writeByte('\'');
         },
         .boolean => |boolean| try writer.writeAll(if (boolean) "true" else "false"),
@@ -92,6 +92,8 @@ test "emit key-value document" {
     const fields = [_]Field{
         .{ .name = "name", .value = .{ .string = "demo" } },
         .{ .name = "if", .value = .{ .number = 3 } },
+        .{ .name = "quote\"name", .value = .{ .string = "line\n\"two\"\\" } },
+        .{ .name = "quote", .value = .{ .char = '\'' } },
         .{ .name = "server", .value = .{ .record = &server_fields } },
     };
 
@@ -102,6 +104,8 @@ test "emit key-value document" {
     try std.testing.expectEqualStrings(
         \\name = "demo"
         \\@"if" = 3
+        \\@"quote\"name" = "line\n\"two\"\\"
+        \\quote = '\''
         \\server = {
         \\  host = "localhost"
         \\  port = 8080
@@ -119,5 +123,7 @@ test "emit key-value document" {
     var interpreter = Interpreter.init(std.testing.allocator, ast);
     defer interpreter.deinit();
     try std.testing.expectEqual(Value{ .number = 3 }, try interpreter.get("if"));
+    try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
+    try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);
     try std.testing.expectEqual(Value{ .number = 8080 }, try interpreter.get("server.port"));
 }

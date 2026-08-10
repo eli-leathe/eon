@@ -13,10 +13,10 @@ syntax keyword eonOperator and or not
 syntax keyword eonTodo TODO FIXME XXX NOTE contained
 
 syntax match eonComment "//.*$" contains=eonTodo,@Spell
-syntax region eonString start=+"+ end=+"+ oneline
-syntax region eonCharacter start=+'+ end=+'+ oneline
+syntax region eonString start=+"+ skip=+\\\\\|\\"+ end=+"+ oneline
+syntax region eonCharacter start=+'+ skip=+\\\\\|\\'+ end=+'+ oneline
 syntax match eonNumber "\<\d[[:alnum:]_]*\%\(\.[[:alnum:]_]\+\)\?\>"
-syntax match eonIdentifier '@"[^"[:cntrl:]]\+"'
+syntax region eonIdentifier start=+@"+ skip=+\\\\\|\\"+ end=+"+ oneline
 syntax match eonKey "\<[A-Za-z_][A-Za-z0-9_]*\>\ze\s*="
 syntax match eonOperator "==\|[+*/-]"
 syntax match eonDelimiter "[{}()[\];,.]"

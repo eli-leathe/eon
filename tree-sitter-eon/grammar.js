@@ -87,7 +87,7 @@ module.exports = grammar({
 
     identifier: _ => token(choice(
       /[A-Za-z_][A-Za-z0-9_]*/,
-      /@"[^"\r\n\x00-\x1f\x7f]+"/,
+      /@"(?:\\[^\r\n\x00-\x1f\x7f]|[^"\\\r\n\x00-\x1f\x7f])+"/,
     )),
 
     number: _ => token(choice(
@@ -97,8 +97,8 @@ module.exports = grammar({
       /[0-9][0-9A-Za-z_]*(?:\.[0-9A-Za-z_]+)?(?:[eEpP][+-]?[0-9A-Za-z_]+)?/,
     )),
 
-    string: _ => token(/"[^"\r\n\x00-\x1f\x7f]*"/),
-    character: _ => token(/'[^'\r\n\x00-\x1f\x7f]*'/),
+    string: _ => token(/"(?:\\[^\r\n\x00-\x1f\x7f]|[^"\\\r\n\x00-\x1f\x7f])*"/),
+    character: _ => token(/'(?:\\[^\r\n\x00-\x1f\x7f]|[^'\\\r\n\x00-\x1f\x7f])*'/),
     comment: _ => token(seq('//', /[^\r\n]*/)),
 
     _separator: _ => choice(';', /\r?\n/),

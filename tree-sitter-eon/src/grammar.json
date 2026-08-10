@@ -572,7 +572,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "@\"[^\"\\r\\n\\x00-\\x1f\\x7f]+\""
+            "value": "@\"(?:\\\\[^\\r\\n\\x00-\\x1f\\x7f]|[^\"\\\\\\r\\n\\x00-\\x1f\\x7f])+\""
           }
         ]
       }
@@ -605,14 +605,14 @@
       "type": "TOKEN",
       "content": {
         "type": "PATTERN",
-        "value": "\"[^\"\\r\\n\\x00-\\x1f\\x7f]*\""
+        "value": "\"(?:\\\\[^\\r\\n\\x00-\\x1f\\x7f]|[^\"\\\\\\r\\n\\x00-\\x1f\\x7f])*\""
       }
     },
     "character": {
       "type": "TOKEN",
       "content": {
         "type": "PATTERN",
-        "value": "'[^'\\r\\n\\x00-\\x1f\\x7f]*'"
+        "value": "'(?:\\\\[^\\r\\n\\x00-\\x1f\\x7f]|[^'\\\\\\r\\n\\x00-\\x1f\\x7f])*'"
       }
     },
     "comment": {

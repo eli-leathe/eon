@@ -6,9 +6,11 @@ const Ast = @import("Ast.zig");
 
 const Interpreter = @This();
 
-pub const EvaluationError = Allocator.Error || error{
+pub const IdentifierError = Allocator.Error || error{InvalidIdentifier};
+pub const EvaluationError = IdentifierError || error{
     InvalidNumber,
     InvalidChar,
+    InvalidString,
     UnexpectedType,
     ExpectedValue,
     ValuesNotComparable,
@@ -53,7 +55,7 @@ pub const Value = union(enum) {
             .number => |float| try writer.print("{d}", .{float}),
             .char => |char| {
                 try writer.writeByte('\'');
-                try writer.printUnicodeCodepoint(char);
+                try std.zig.charEscape(char, writer);
                 try writer.writeByte('\'');
             },
             .boolean => |boolean| try writer.writeAll(if (boolean) "true" else "false"),
@@ -138,7 +140,7 @@ pub const MapCursor = struct {
         interpreter: *Interpreter,
         at: Ast.Node.Index,
         index: usize,
-        pub fn next(self: *MapFieldIterator) ?[]const u8 {
+        pub fn next(self: *MapFieldIterator) IdentifierError!?[]const u8 {
             const declarations = switch (self.interpreter.ast.nodeData(self.at)) {
                 .map => |declarations| declarations[0],
                 else => unreachable,
@@ -146,7 +148,7 @@ pub const MapCursor = struct {
             if (self.index >= declarations.len) return null;
             const declaration = self.interpreter.ast.nodeData(declarations[self.index]).declaration;
             self.index += 1;
-            return self.interpreter.ast.identifierSlice(declaration.lhs);
+            return try self.interpreter.identifierName(declaration.lhs);
         }
     };
 };
@@ -159,6 +161,8 @@ const NodeState = union(enum) {
 ast: Ast,
 bindings: []const Binding,
 node_states: std.AutoHashMap(Ast.Node.Index, NodeState),
+decoded_identifiers: std.AutoHashMap(Ast.TokenIndex, []const u8),
+decode_arena: std.heap.ArenaAllocator,
 
 pub fn init(gpa: Allocator, ast: Ast) Interpreter {
     return initWithBindings(gpa, ast, &.{});
@@ -169,17 +173,36 @@ pub fn initWithBindings(gpa: Allocator, ast: Ast, bindings: []const Binding) Int
         .ast = ast,
         .bindings = bindings,
         .node_states = .init(gpa),
+        .decoded_identifiers = .init(gpa),
+        .decode_arena = .init(gpa),
     };
 }
 
 pub fn deinit(self: *Interpreter) void {
     self.node_states.deinit();
+    self.decoded_identifiers.deinit();
+    self.decode_arena.deinit();
     self.* = undefined;
 }
 
 fn nodeSlice(self: *Interpreter, node: Ast.Node.Index) []const u8 {
     return self.ast.tokenSlice(self.ast.nodeMainToken(node));
 }
+
+fn identifierName(self: *Interpreter, token: Ast.TokenIndex) IdentifierError![]const u8 {
+    const spelling = self.ast.tokenSlice(token);
+    if (!std.mem.startsWith(u8, spelling, "@\"")) return spelling;
+    if (self.decoded_identifiers.get(token)) |name| return name;
+
+    const name = std.zig.string_literal.parseAlloc(self.decode_arena.allocator(), spelling[1..]) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidLiteral => return error.InvalidIdentifier,
+    };
+    if (name.len == 0 or std.mem.findScalar(u8, name, 0) != null) return error.InvalidIdentifier;
+    try self.decoded_identifiers.put(token, name);
+    return name;
+}
+
 fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evaluated {
     if (self.node_states.get(node)) |state| switch (state) {
         .waiting => return error.RecursiveDefinition,
@@ -194,12 +217,10 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
         .declaration => unreachable,
         .char_literal => {
             const spelling = self.nodeSlice(node);
-            if (spelling.len < 2) return error.InvalidChar;
-            const contents = spelling[1 .. spelling.len - 1];
-            const char = std.unicode.utf8Decode(contents) catch return error.InvalidChar;
-            const encoded_len = std.unicode.utf8CodepointSequenceLength(char) catch return error.InvalidChar;
-            if (encoded_len != contents.len) return error.InvalidChar;
-            break :result .{ .value = .{ .char = char } };
+            break :result .{ .value = .{ .char = switch (std.zig.parseCharLiteral(spelling)) {
+                .success => |char| char,
+                .failure => return error.InvalidChar,
+            } } };
         },
         .number_literal => {
             const spelling = self.nodeSlice(node);
@@ -209,13 +230,17 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
         },
         .string_literal => {
             const spelling = self.nodeSlice(node);
-            break :result .{ .value = .{
-                .string = if (spelling.len >= 2) spelling[1 .. spelling.len - 1] else "",
-            } };
+            break :result .{ .value = .{ .string = std.zig.string_literal.parseAlloc(
+                self.decode_arena.allocator(),
+                spelling,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidLiteral => return error.InvalidString,
+            } } };
         },
         .identifier => {
-            const name = self.ast.identifierSlice(self.ast.nodeMainToken(node));
-            if (self.findDeclaration(.root, name)) |rhs| break :result try self.evaluateNode(rhs);
+            const name = try self.identifierName(self.ast.nodeMainToken(node));
+            if (try self.findDeclaration(.root, name)) |rhs| break :result try self.evaluateNode(rhs);
             for (self.bindings) |binding| {
                 if (std.mem.eql(u8, binding.name, name)) {
                     break :result .{ .value = binding.value };
@@ -250,7 +275,7 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
         ) } },
         .field_access => |field| {
             const parent = try self.evaluateNode(field.parent);
-            const child = self.ast.tokenSlice(field.child);
+            const child = try self.identifierName(field.child);
             break :result try self.getField(parent, child);
         },
         .apply => |application| {
@@ -269,7 +294,7 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
 
 fn getField(self: *Interpreter, parent: Evaluated, name: []const u8) EvaluationError!Evaluated {
     return switch (parent) {
-        .source_map => |map| if (self.findDeclaration(map, name)) |rhs|
+        .source_map => |map| if (try self.findDeclaration(map, name)) |rhs|
             self.evaluateNode(rhs)
         else
             error.MissingField,
@@ -285,14 +310,14 @@ fn getField(self: *Interpreter, parent: Evaluated, name: []const u8) EvaluationE
     };
 }
 
-fn findDeclaration(self: *const Interpreter, map: Ast.Node.Index, name: []const u8) ?Ast.Node.Index {
+fn findDeclaration(self: *Interpreter, map: Ast.Node.Index, name: []const u8) IdentifierError!?Ast.Node.Index {
     const declarations = switch (self.ast.nodeData(map)) {
         .map => |declarations| declarations[0],
         else => return null,
     };
     for (declarations) |declaration_index| {
         const declaration = self.ast.nodeData(declaration_index).declaration;
-        if (std.mem.eql(u8, name, self.ast.identifierSlice(declaration.lhs))) return declaration.rhs;
+        if (std.mem.eql(u8, name, try self.identifierName(declaration.lhs))) return declaration.rhs;
     }
     return null;
 }
@@ -398,8 +423,10 @@ test "quoted identifiers can use keyword names" {
         \\@"if" = 40
         \\@"true" = 2
         \\@"and" = @"if" + @"true"
+        \\@"quote\"name" = "line\n\"two\"\\"
+        \\quote = '\''
         \\nested = {
-        \\  @"or" = @"and"
+        \\  @"or\"else" = @"and"
         \\}
     );
     defer ast.deinit(std.testing.allocator) catch unreachable;
@@ -410,12 +437,14 @@ test "quoted identifiers can use keyword names" {
 
     try std.testing.expectEqual(Value{ .number = 40 }, try interpreter.get("if"));
     try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("and"));
-    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("nested.or"));
+    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("nested.or\"else"));
+    try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
+    try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);
 
     const nested_map = try (try (try interpreter.cursor()).field("nested")).map();
     var fields = nested_map.fields();
-    try std.testing.expectEqualStrings("or", fields.next().?);
-    try std.testing.expectEqual(null, fields.next());
+    try std.testing.expectEqualStrings("or\"else", (try fields.next()).?);
+    try std.testing.expectEqual(null, try fields.next());
 }
 
 test "map cursor enumerates fields without evaluating them" {
@@ -438,10 +467,10 @@ test "map cursor enumerates fields without evaluating them" {
     const map_cursor = try section_cursor.map();
     const evaluated_node_count = interpreter.node_states.count();
     var fields = map_cursor.fields();
-    try std.testing.expectEqualStrings("first", fields.next().?);
-    try std.testing.expectEqualStrings("broken", fields.next().?);
-    try std.testing.expectEqualStrings("last", fields.next().?);
-    try std.testing.expectEqual(null, fields.next());
+    try std.testing.expectEqualStrings("first", (try fields.next()).?);
+    try std.testing.expectEqualStrings("broken", (try fields.next()).?);
+    try std.testing.expectEqualStrings("last", (try fields.next()).?);
+    try std.testing.expectEqual(null, try fields.next());
     try std.testing.expectEqual(evaluated_node_count, interpreter.node_states.count());
 }
 
@@ -454,6 +483,8 @@ test "reports lookup and evaluation errors" {
         \\map = {
         \\  value = 1
         \\}
+        \\invalid_string = "\q"
+        \\invalid_identifier = @"bad\q"
     );
     defer ast.deinit(std.testing.allocator) catch unreachable;
     try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
@@ -464,6 +495,8 @@ test "reports lookup and evaluation errors" {
     try std.testing.expectError(error.MissingField, interpreter.get("missing"));
     try std.testing.expectError(error.ExpectedValue, interpreter.get("map"));
     try std.testing.expectError(error.RecursiveDefinition, interpreter.get("cycle_a"));
+    try std.testing.expectError(error.InvalidString, interpreter.get("invalid_string"));
+    try std.testing.expectError(error.InvalidIdentifier, interpreter.get("invalid_identifier"));
 }
 
 test "host records and functions" {

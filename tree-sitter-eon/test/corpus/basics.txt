@@ -70,6 +70,8 @@ quoted keyword identifiers
 @"if" = 40
 @"true" = 2
 @"and" = @"if" + @"true"
+@"quote\"name" = "line\n\"two\"\\"
+quote = '\''
 
 ---
 
@@ -84,7 +86,13 @@ quoted keyword identifiers
     name: (identifier)
     value: (binary_expression
       left: (identifier)
-      right: (identifier))))
+      right: (identifier)))
+  (declaration
+    name: (identifier)
+    value: (string))
+  (declaration
+    name: (identifier)
+    value: (character)))
 
 ==================
 comments and semicolons

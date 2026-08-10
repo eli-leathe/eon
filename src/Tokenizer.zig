@@ -102,7 +102,9 @@ pub fn next(self: *Tokenizer) Token {
     const State = enum {
         start,
         string_literal,
+        string_literal_backslash,
         char_literal,
+        char_literal_backslash,
         identifier,
         @"@",
         equal,
@@ -243,10 +245,19 @@ pub fn next(self: *Tokenizer) Token {
                     }
                 },
                 '\n' => result.tag = .invalid,
+                '\\' => continue :state .string_literal_backslash,
                 '"' => self.index += 1,
                 0x01...0x09, 0x0b...0x1f, 0x7f => {
                     continue :state .invalid;
                 },
+                else => continue :state .string_literal,
+            }
+        },
+        .string_literal_backslash => {
+            self.index += 1;
+            switch (self.buf[self.index]) {
+                0, '\n' => result.tag = .invalid,
+                0x01...0x09, 0x0b...0x1f, 0x7f => continue :state .invalid,
                 else => continue :state .string_literal,
             }
         },
@@ -261,10 +272,19 @@ pub fn next(self: *Tokenizer) Token {
                     }
                 },
                 '\n' => result.tag = .invalid,
+                '\\' => continue :state .char_literal_backslash,
                 '\'' => self.index += 1,
                 0x01...0x09, 0x0b...0x1f, 0x7f => {
                     continue :state .invalid;
                 },
+                else => continue :state .char_literal,
+            }
+        },
+        .char_literal_backslash => {
+            self.index += 1;
+            switch (self.buf[self.index]) {
+                0, '\n' => result.tag = .invalid,
+                0x01...0x09, 0x0b...0x1f, 0x7f => continue :state .invalid,
                 else => continue :state .char_literal,
             }
         },
@@ -400,6 +420,7 @@ test "tokenize" {
         \\ }//this is a comment
         \\and or not
         \\@"and" @"or" @"not" @"true" @"false" @"if"
+        \\@"quote\"name" "line\n\"two\"\\"
     , &.{
         .keyword_if,
         .identifier,
@@ -419,6 +440,9 @@ test "tokenize" {
         .identifier,
         .identifier,
         .identifier,
+        .nl,
+        .identifier,
+        .string_literal,
     });
 }
 
