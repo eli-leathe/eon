@@ -56,14 +56,14 @@ fn failAt(p: *Parse, token: TokenIndex, data: Ast.Error.Data) Error!noreturn {
 }
 fn parseRoot(p: *Parse) Error!void {
     p.nodes.appendAssumeCapacity(.{
-        .data = .{ .root = undefined },
+        .data = .{ .map = undefined },
         .main_token = 0,
     });
 
     const defs = try p.parseDeclarations();
 
     if (p.tokenTag(p.tok_i) != .eof) try p.failExpected(.eof);
-    p.nodes.items(.data)[0] = .{ .root = defs };
+    p.nodes.items(.data)[0] = .{ .map = defs };
 }
 
 const OperInfo = struct {
@@ -72,7 +72,7 @@ const OperInfo = struct {
     assoc: enum { left, none } = .left,
 };
 
-const operTable = std.enums.directEnumArrayDefault(Token.Tag, OperInfo, .{ .prec = -1, .tag = Ast.Node.Tag.root }, 0, .{
+const operTable = std.enums.directEnumArrayDefault(Token.Tag, OperInfo, .{ .prec = -1, .tag = undefined }, 0, .{
     .keyword_or = .{ .prec = 10, .tag = .bool_or },
 
     .keyword_and = .{ .prec = 20, .tag = .bool_and },
@@ -214,10 +214,21 @@ fn expectExpr(p: *Parse) Error!Ast.Node.Index {
     return try p.parseExprPrecedence(0) orelse try p.fail(.expected_expr);
 }
 
+fn expectMap(p: *Parse) Error!Ast.Node.Index {
+    const map_tok = p.tok_i;
+    _ = try p.expectToken(.l_brace);
+    const m = try p.parseDeclarations();
+    _ = try p.expectToken(.r_brace);
+
+    return try p.addNode(.{ .main_token = map_tok, .data = .{ .map = m } });
+}
 fn expectDeclaration(p: *Parse) Error!Ast.Node.Index {
     const id = try p.expectToken(.identifier);
     _ = try p.expectToken(.equal);
-    const expr = try p.expectExpr();
+    const expr = switch (p.tokenTag(p.tok_i)) {
+        .l_brace => try p.expectMap(),
+        else => try p.expectExpr(),
+    };
 
     return try p.addNode(.{ .data = .{ .declaration = .{ .lhs = id, .rhs = expr } }, .main_token = id });
 }

@@ -96,7 +96,7 @@ fn addSnapshotInputs(b: *std.Build, run: *std.Build.Step.Run) void {
 
     var iterator = cases_dir.iterateAssumeFirstIteration();
     while (iterator.next(b.graph.io) catch @panic("unable to iterate tests/cases")) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".temporal")) continue;
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".eon")) continue;
         run.addFileInput(b.path(b.pathJoin(&.{ "tests/cases", entry.name })));
     }
 }

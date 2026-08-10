@@ -31,7 +31,7 @@ pub fn dot(ast: *const Ast, writer: *Writer) Writer.Error!void {
 
     for (ast.nodes.items(.data), 0..) |data, i| {
         switch (data) {
-            .root => |declarations| for (declarations) |declaration| {
+            .map => |declarations| for (declarations) |declaration| {
                 try writeDotEdge(writer, i, declaration, null);
             },
             .declaration => |declaration| try writeDotEdge(writer, i, declaration.rhs, "value"),
@@ -76,11 +76,13 @@ fn writeTextNode(
     }
 
     switch (data) {
-        .root => |declarations| if (declarations.len != 0) {
+        .map => |declarations| if (declarations.len != 0) {
+            if (depth != 0) try writer.writeByte('{');
             try writer.writeByte('\n');
             for (declarations, 0..) |declaration, i| {
                 try writeTextNode(ast, writer, declaration, depth + 1, i + 1 < declarations.len);
             }
+            if (depth != 0) try writer.writeByte('}');
         },
         .declaration => |declaration| {
             try writer.writeByte('\n');
@@ -169,7 +171,7 @@ test "text AST dump" {
     try text(&ast, &output.writer);
 
     try std.testing.expectEqualStrings(
-        \\(root
+        \\(map
         \\  (declaration "value"
         \\    (add
         \\      (identifier "a")

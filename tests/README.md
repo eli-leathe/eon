@@ -1,6 +1,6 @@
 # Parser and tokenizer snapshots
 
-Each `cases/*.temporal` file is tokenized and parsed. The generated snapshot records token tags, byte ranges and text, followed by the AST as an S-expression or parse errors.
+Each `cases/*.eon` file is tokenized and parsed. The generated snapshot records token tags, byte ranges and text, followed by the AST as an S-expression or parse errors.
 
 Run the complete suite:
 
@@ -17,4 +17,4 @@ zig build update-snapshots
 git diff -- tests/snapshots/parser-tokenizer.snap
 ```
 
-Adding another `.temporal` file to `cases/` automatically adds it to the aggregate snapshot.
+Adding another `.eon` file to `cases/` automatically adds it to the aggregate snapshot.

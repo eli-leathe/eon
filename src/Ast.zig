@@ -32,7 +32,7 @@ pub const Node = struct {
 
     pub const Tag = @typeInfo(Data).@"union".tag_type.?;
     pub const Data = union(enum) {
-        root: []Index,
+        map: []Index,
         declaration: struct { lhs: TokenIndex, rhs: Index },
         negation: Index,
         char_literal,

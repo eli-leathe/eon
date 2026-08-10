@@ -30,7 +30,7 @@ fn generate(init: std.process.Init) !void {
 
     var iterator = cases_dir.iterateAssumeFirstIteration();
     while (try iterator.next(init.io)) |entry| {
-        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".temporal")) continue;
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".eon")) continue;
         try case_names.append(init.gpa, try init.gpa.dupe(u8, entry.name));
     }
     std.sort.insertion([]const u8, case_names.items, {}, lessThan);

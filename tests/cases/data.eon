@@ -1,0 +1,6 @@
+test = {
+  first = 1
+}
+other = {
+  second = test.first * test.first
+}
