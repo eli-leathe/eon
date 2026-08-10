@@ -4,19 +4,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("temporal", .{
+    const mod = b.addModule("eon", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
 
     const exe = b.addExecutable(.{
-        .name = "temporal",
+        .name = "eon",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "temporal", .module = mod },
+                .{ .name = "eon", .module = mod },
             },
         }),
     });
@@ -42,13 +42,13 @@ pub fn build(b: *std.Build) void {
     const run_exe_tests = b.addRunArtifact(exe_tests);
 
     const snapshot_exe = b.addExecutable(.{
-        .name = "temporal-snapshot",
+        .name = "eon-snapshot",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/snapshot.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "temporal", .module = mod },
+                .{ .name = "eon", .module = mod },
             },
         }),
     });

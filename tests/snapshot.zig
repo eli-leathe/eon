@@ -2,7 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const Writer = Io.Writer;
 
-const temporal = @import("temporal");
+const eon = @import("eon");
 
 pub fn main(init: std.process.Init) u8 {
     generate(init) catch |err| {
@@ -68,7 +68,7 @@ fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
 
 fn writeTokens(source: [:0]const u8, writer: *Writer) Writer.Error!void {
     try writer.writeAll("TOKENS\n");
-    var tokenizer = temporal.Tokenizer.init(source);
+    var tokenizer = eon.Tokenizer.init(source);
     while (true) {
         const token = tokenizer.next();
         try writer.print("  {s} {d}..{d} ", .{ @tagName(token.tag), token.loc.start, token.loc.end });
@@ -82,7 +82,7 @@ fn writeParseResult(gpa: std.mem.Allocator, source: [:0]const u8, writer: *Write
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
-    var ast = try temporal.Parse.parse(gpa, arena.allocator(), source);
+    var ast = try eon.Parse.parse(gpa, arena.allocator(), source);
     defer ast.deinit(gpa) catch unreachable;
 
     try writer.writeAll("AST\n");

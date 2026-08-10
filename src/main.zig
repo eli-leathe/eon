@@ -2,7 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 const Writer = Io.Writer;
 
-const temporal = @import("temporal");
+const eon = @import("eon");
 
 const Mode = union(enum) {
     none,
@@ -69,7 +69,7 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
         return 1;
     };
 
-    var ast = try temporal.Parse.parse(init.gpa, arena, source);
+    var ast = try eon.Parse.parse(init.gpa, arena, source);
     defer ast.deinit(init.gpa) catch {};
 
     if (ast.errors.len != 0) {
@@ -80,10 +80,10 @@ fn run(init: std.process.Init, stdout: *Writer, stderr: *Writer) !u8 {
 
     switch (mode) {
         .none => {},
-        .format => try temporal.Format.render(&ast, stdout),
+        .format => try eon.Format.render(&ast, stdout),
         .text => try stdout.print("{f}", .{ast}),
         .get => |what| {
-            var interpreter = temporal.Interpreter.init(init.gpa, ast);
+            var interpreter = eon.Interpreter.init(init.gpa, ast);
             defer interpreter.deinit();
 
             var what_path = try init.gpa.alloc([]const u8, std.mem.countScalar(u8, what, '.') + 1);
@@ -123,7 +123,7 @@ fn readInput(io: Io, allocator: std.mem.Allocator, path: []const u8) ![:0]u8 {
 
 fn usage(writer: *Writer) Writer.Error!void {
     try writer.writeAll(
-        \\Usage: temporal [options] <file|->
+        \\Usage: eon [options] <file|->
         \\
         \\Use '-' as the file to read from standard input.
         \\
@@ -136,7 +136,7 @@ fn usage(writer: *Writer) Writer.Error!void {
     );
 }
 
-fn printParseError(writer: *Writer, path: []const u8, ast: *const temporal.Ast, parse_error: temporal.Ast.Error) Writer.Error!void {
+fn printParseError(writer: *Writer, path: []const u8, ast: *const eon.Ast, parse_error: eon.Ast.Error) Writer.Error!void {
     const token_tags = ast.tokens.items(.tag);
     const token_starts = ast.tokens.items(.start);
     const token_index: usize = parse_error.token;
