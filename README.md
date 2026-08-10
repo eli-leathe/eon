@@ -90,3 +90,34 @@ tests live in `tree-sitter-eon`. From that directory, run `tree-sitter test`
 to test the grammar.
 
 Run the Eon test suite with `zig build test`.
+
+## Plan
+
+I intend to use this as a base to try a few different things:
+
+- Compile to IR + tree graph + dependencies
+  - i don't like the interpreter, use IR
+  - Don't recompute everything when a value changes, only what is needed
+
+- "Temporal logic": a declaration is a circular buffer of the last few values, you can access them and do some cool stuff (a research thing, it can fail completly)
+  For instance:
+
+```eon
+try_jump = rise (input "space")
+jump_buffer_time = 100ms
+jump = take jump_buffer_time try_jump
+       when once coyote_grace_period grounded
+```
+
+`rise`: detect rising edge
+`take dur`: consume the last non expired event (expires after `dur`)
+`when`: if
+`once dur cond`: returns true if cond was true before (duration given by dur)
+
+This implements coyote time, input buffering in a few lines! quite good no?
+
+## Slop disclosure
+
+I use AI, mainly for the stuff that is secondary and not that important, like the test suite, tree-sitter, the vim syntax, etc.
+The core is not AI-generated though and i don't plan to use AI, except to assist in some boring stuff (with thorough code review and more)
+(the cli is slop though, but i intend to clean that soon)
