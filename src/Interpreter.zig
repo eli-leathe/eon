@@ -240,7 +240,10 @@ pub const ArrayCursor = struct {
         if (index >= source_items.len) return error.IndexOutOfBounds;
         return .{
             .interpreter = self.interpreter,
-            .at = try self.interpreter.evaluateNode(source_items[index].value),
+            .at = try self.interpreter.evaluateNode(
+                source_items[index].value,
+                self.interpreter.parent_scopes.get(self.at) orelse unreachable,
+            ),
         };
     }
 
@@ -279,6 +282,7 @@ const NodeState = union(enum) {
 ast: Ast,
 bindings: []const Binding,
 node_states: std.AutoHashMap(Ast.Node.Index, NodeState),
+parent_scopes: std.AutoHashMap(Ast.Node.Index, Ast.Node.Index),
 decoded_identifiers: std.AutoHashMap(Ast.TokenIndex, []const u8),
 arena: std.heap.ArenaAllocator,
 
@@ -291,6 +295,7 @@ pub fn initWithBindings(gpa: Allocator, ast: Ast, bindings: []const Binding) Int
         .ast = ast,
         .bindings = bindings,
         .node_states = .init(gpa),
+        .parent_scopes = .init(gpa),
         .decoded_identifiers = .init(gpa),
         .arena = .init(gpa),
     };
@@ -298,6 +303,7 @@ pub fn initWithBindings(gpa: Allocator, ast: Ast, bindings: []const Binding) Int
 
 pub fn deinit(self: *Interpreter) void {
     self.node_states.deinit();
+    self.parent_scopes.deinit();
     self.decoded_identifiers.deinit();
     self.arena.deinit();
     self.* = undefined;
@@ -321,7 +327,11 @@ fn identifierName(self: *Interpreter, token: Ast.TokenIndex) IdentifierError![]c
     return name;
 }
 
-fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evaluated {
+fn evaluateNode(
+    self: *Interpreter,
+    node: Ast.Node.Index,
+    parent_scope: Ast.Node.Index,
+) EvaluationError!Evaluated {
     if (self.node_states.get(node)) |state| switch (state) {
         .waiting => return error.RecursiveDefinition,
         .value => |value| return value,
@@ -331,8 +341,14 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
     errdefer _ = self.node_states.remove(node);
 
     const result: Evaluated = result: switch (self.ast.nodeData(node)) {
-        .map => break :result .{ .map = node },
-        .array => break :result .{ .array = node },
+        .map => {
+            try self.parent_scopes.putNoClobber(node, parent_scope);
+            break :result .{ .map = node };
+        },
+        .array => {
+            try self.parent_scopes.putNoClobber(node, parent_scope);
+            break :result .{ .array = node };
+        },
         .declaration => unreachable,
         .boolean_literal => break :result .{ .value = .{
             .boolean = self.ast.tokenTag(self.ast.nodeMainToken(node)) == .keyword_true,
@@ -365,7 +381,9 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
         } },
         .identifier => {
             const name = try self.identifierName(self.ast.nodeMainToken(node));
-            if (try self.findDeclaration(.root, name)) |rhs| break :result try self.evaluateNode(rhs);
+            if (try self.findDeclarationInScope(parent_scope, name)) |declaration| {
+                break :result try self.evaluateNode(declaration.rhs, declaration.parent_scope);
+            }
             for (self.bindings) |binding| {
                 if (std.mem.eql(u8, binding.name, name)) {
                     break :result .{ .value = binding.value };
@@ -373,42 +391,42 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
             }
             return error.UndefinedIdentifier;
         },
-        .group => |group| break :result try self.evaluateNode(group[0]),
-        .negation => |operand| .{ .value = .{ .number = -try self.evaluateNodeOfType(operand, .number) } },
-        .add => |binary| .{ .value = .{ .number = try self.evaluateNodeOfType(binary.lhs, .number) + try self.evaluateNodeOfType(binary.rhs, .number) } },
-        .sub => |binary| .{ .value = .{ .number = try self.evaluateNodeOfType(binary.lhs, .number) - try self.evaluateNodeOfType(binary.rhs, .number) } },
-        .mul => |binary| .{ .value = .{ .number = try self.evaluateNodeOfType(binary.lhs, .number) * try self.evaluateNodeOfType(binary.rhs, .number) } },
+        .group => |group| break :result try self.evaluateNode(group[0], parent_scope),
+        .negation => |operand| .{ .value = .{ .number = -try self.evaluateNodeOfType(operand, parent_scope, .number) } },
+        .add => |binary| .{ .value = .{ .number = try self.evaluateNodeOfType(binary.lhs, parent_scope, .number) + try self.evaluateNodeOfType(binary.rhs, parent_scope, .number) } },
+        .sub => |binary| .{ .value = .{ .number = try self.evaluateNodeOfType(binary.lhs, parent_scope, .number) - try self.evaluateNodeOfType(binary.rhs, parent_scope, .number) } },
+        .mul => |binary| .{ .value = .{ .number = try self.evaluateNodeOfType(binary.lhs, parent_scope, .number) * try self.evaluateNodeOfType(binary.rhs, parent_scope, .number) } },
         .div => |binary| {
-            const lhs = try self.evaluateNodeOfType(binary.lhs, .number);
-            const rhs = try self.evaluateNodeOfType(binary.rhs, .number);
+            const lhs = try self.evaluateNodeOfType(binary.lhs, parent_scope, .number);
+            const rhs = try self.evaluateNodeOfType(binary.rhs, parent_scope, .number);
             break :result if (rhs == 0) return error.DivisionByZero else .{ .value = .{ .number = lhs / rhs } };
         },
         .bool_and => |binary| {
-            const lhs = try self.evaluateNodeOfType(binary.lhs, .boolean);
+            const lhs = try self.evaluateNodeOfType(binary.lhs, parent_scope, .boolean);
             if (!lhs) break :result .{ .value = .{ .boolean = false } };
-            break :result .{ .value = .{ .boolean = try self.evaluateNodeOfType(binary.rhs, .boolean) } };
+            break :result .{ .value = .{ .boolean = try self.evaluateNodeOfType(binary.rhs, parent_scope, .boolean) } };
         },
         .bool_or => |binary| {
-            const lhs = try self.evaluateNodeOfType(binary.lhs, .boolean);
+            const lhs = try self.evaluateNodeOfType(binary.lhs, parent_scope, .boolean);
             if (lhs) break :result .{ .value = .{ .boolean = true } };
-            break :result .{ .value = .{ .boolean = try self.evaluateNodeOfType(binary.rhs, .boolean) } };
+            break :result .{ .value = .{ .boolean = try self.evaluateNodeOfType(binary.rhs, parent_scope, .boolean) } };
         },
         .equal => unreachable,
         .equal_equal => |binary| .{ .value = .{ .boolean = try valuesEqual(
-            try expectValue(try self.evaluateNode(binary.lhs)),
-            try expectValue(try self.evaluateNode(binary.rhs)),
+            try expectValue(try self.evaluateNode(binary.lhs, parent_scope)),
+            try expectValue(try self.evaluateNode(binary.rhs, parent_scope)),
         ) } },
         .field_access => |field| {
-            const parent = try self.evaluateNode(field.parent);
+            const parent = try self.evaluateNode(field.parent, parent_scope);
             const child = try self.identifierName(field.child);
             break :result try self.getField(parent, child);
         },
         .apply => |application| {
-            const function = switch (try expectValue(try self.evaluateNode(application.func))) {
+            const function = switch (try expectValue(try self.evaluateNode(application.func, parent_scope))) {
                 .function => |function| function,
                 else => return error.NotCallable,
             };
-            const argument = try expectValue(try self.evaluateNode(application.arg));
+            const argument = try expectValue(try self.evaluateNode(application.arg, parent_scope));
             break :result .{ .value = function.call(argument) };
         },
     };
@@ -441,7 +459,7 @@ fn materializeValue(self: *Interpreter, evaluated: Evaluated) EvaluationError!Ma
                 const declaration = self.ast.nodeData(declaration_index).declaration;
                 field.* = .{
                     .name = try self.identifierName(declaration.lhs),
-                    .value = try self.materializeValue(try self.evaluateNode(declaration.rhs)),
+                    .value = try self.materializeValue(try self.evaluateNode(declaration.rhs, map)),
                 };
             }
             return .{ .record = fields };
@@ -464,7 +482,10 @@ fn materializeValue(self: *Interpreter, evaluated: Evaluated) EvaluationError!Ma
             }
 
             for (source_items, items) |source_item, *item| {
-                item.* = try self.materializeValue(try self.evaluateNode(source_item.value));
+                item.* = try self.materializeValue(try self.evaluateNode(
+                    source_item.value,
+                    self.parent_scopes.get(array) orelse unreachable,
+                ));
             }
             return .{ .array = items };
         },
@@ -474,11 +495,28 @@ fn materializeValue(self: *Interpreter, evaluated: Evaluated) EvaluationError!Ma
 fn getField(self: *Interpreter, parent: Evaluated, name: []const u8) EvaluationError!Evaluated {
     return switch (parent) {
         .map => |map| if (try self.findDeclaration(map, name)) |rhs|
-            self.evaluateNode(rhs)
+            self.evaluateNode(rhs, map)
         else
             error.MissingField,
         .array, .value => error.InvalidFieldAccess,
     };
+}
+
+const ScopedDeclaration = struct {
+    rhs: Ast.Node.Index,
+    parent_scope: Ast.Node.Index,
+};
+
+fn findDeclarationInScope(self: *Interpreter, starting_scope: Ast.Node.Index, name: []const u8) IdentifierError!?ScopedDeclaration {
+    var parent_scope = starting_scope;
+    while (true) {
+        if (try self.findDeclaration(parent_scope, name)) |rhs| return .{
+            .rhs = rhs,
+            .parent_scope = parent_scope,
+        };
+        if (parent_scope == .root) return null;
+        parent_scope = self.parent_scopes.get(parent_scope) orelse unreachable;
+    }
 }
 
 fn findDeclaration(self: *Interpreter, map: Ast.Node.Index, name: []const u8) IdentifierError!?Ast.Node.Index {
@@ -508,8 +546,13 @@ fn expectType(value: Value, comptime kind: std.meta.Tag(Value)) error{Unexpected
         else => return error.UnexpectedType,
     }
 }
-fn evaluateNodeOfType(self: *Interpreter, node: Ast.Node.Index, comptime kind: std.meta.Tag(Value)) EvaluationError!@FieldType(Value, @tagName(kind)) {
-    return expectValueOfType(try self.evaluateNode(node), kind);
+fn evaluateNodeOfType(
+    self: *Interpreter,
+    node: Ast.Node.Index,
+    parent_scope: Ast.Node.Index,
+    comptime kind: std.meta.Tag(Value),
+) EvaluationError!@FieldType(Value, @tagName(kind)) {
+    return expectValueOfType(try self.evaluateNode(node, parent_scope), kind);
 }
 
 pub fn cursor(self: *Interpreter) CursorError!TreeCursor {
@@ -644,6 +687,59 @@ test "evaluate paths and expressions" {
         try (try (try root_cursor.field("nested")).field("answer")).value(),
     );
     try std.testing.expectError(error.InvalidPath, root_cursor.field(""));
+}
+
+test "identifiers use lexical map scope" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(),
+        \\root_value = 5
+        \\input = {
+        \\  scale = 2
+        \\  player = {
+        \\    max_jump_height = 3.2
+        \\    jump_time = 0.2
+        \\    fall_time = 0.15
+        \\    jump_initial_speed = [2 * max_jump_height / jump_time, scale]
+        \\    gravity = -2 * max_jump_height / (fall_time * fall_time)
+        \\    inherited = scale + root_value
+        \\  }
+        \\  items = [scale, { value = scale + root_value }]
+        \\}
+        \\shadow = {
+        \\  root_value = 7
+        \\  value = root_value
+        \\}
+    );
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+    try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
+
+    var interpreter = init(std.testing.allocator, ast);
+    defer interpreter.deinit();
+
+    const input = try (try interpreter.cursor()).field("input");
+    const player = try input.field("player");
+    const jump = try (try player.field("jump_initial_speed")).array();
+    try std.testing.expectEqual(Value{ .number = 32 }, try (try jump.item(0)).value());
+    try std.testing.expectEqual(Value{ .number = 2 }, try (try jump.item(1)).value());
+    try std.testing.expectApproxEqAbs(
+        @as(f64, -284.44444444444446),
+        (try (try player.field("gravity")).value()).number,
+        0.000000000001,
+    );
+    try std.testing.expectEqual(Value{ .number = 7 }, try (try player.field("inherited")).value());
+    const shadow = try (try interpreter.cursor()).field("shadow");
+    try std.testing.expectEqual(Value{ .number = 7 }, try (try shadow.field("value")).value());
+
+    const items = try (try input.field("items")).array();
+    try std.testing.expectEqual(Value{ .number = 2 }, try (try items.item(0)).value());
+    try std.testing.expectEqual(
+        Value{ .number = 7 },
+        try (try (try items.item(1)).field("value")).value(),
+    );
+
+    // Eager materialization keeps the same parent scopes while each container is marked as waiting.
+    try std.testing.expectEqual(.record, std.meta.activeTag(try input.materialize()));
 }
 
 test "quoted identifiers can use keyword names" {

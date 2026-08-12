@@ -27,15 +27,16 @@ server = {
 }
 ```
 
-Values can refer to other values, including nested fields:
+Values can refer to other values, including sibling fields, values in enclosing
+records, and nested fields. Bare identifiers are resolved from the innermost
+record outward:
 
 ```eon
-base = {
-  timeout = 15
-}
+base_timeout = 15
 
 production = {
-  timeout = base.timeout * 2
+  timeout = base_timeout * 2
+  retry_delay = timeout / 3
   endpoint = "api.example.com"
 }
 
