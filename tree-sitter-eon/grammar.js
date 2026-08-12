@@ -28,7 +28,7 @@ module.exports = grammar({
     declaration: $ => seq(
       field('name', $.identifier),
       '=',
-      field('value', choice($.map, $._expression)),
+      field('value', $._expression),
     ),
 
     map: $ => seq(
@@ -83,6 +83,7 @@ module.exports = grammar({
       $.string,
       $.character,
       $.array,
+      $.map,
       $.parenthesized_expression,
     ),
 

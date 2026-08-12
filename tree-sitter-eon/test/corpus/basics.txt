@@ -145,6 +145,27 @@ multiline = [
       element: (identifier))))
 
 ==================
+maps in arrays
+==================
+
+items = [{ name = "first" }, { name = "second" }]
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (array
+      element: (map
+        (declaration
+          name: (identifier)
+          value: (string)))
+      element: (map
+        (declaration
+          name: (identifier)
+          value: (string))))))
+
+==================
 comments and semicolons
 ==================
 

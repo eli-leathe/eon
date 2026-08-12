@@ -32,6 +32,10 @@
             "named": true
           },
           {
+            "type": "map",
+            "named": true
+          },
+          {
             "type": "number",
             "named": true
           },
@@ -71,6 +75,10 @@
           },
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "map",
             "named": true
           },
           {
@@ -127,6 +135,10 @@
           },
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "map",
             "named": true
           },
           {
@@ -203,6 +215,10 @@
           },
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "map",
             "named": true
           },
           {
@@ -291,6 +307,10 @@
           },
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "map",
             "named": true
           },
           {
@@ -435,6 +455,10 @@
             "named": true
           },
           {
+            "type": "map",
+            "named": true
+          },
+          {
             "type": "number",
             "named": true
           },
@@ -506,6 +530,10 @@
           "named": true
         },
         {
+          "type": "map",
+          "named": true
+        },
+        {
           "type": "number",
           "named": true
         },
@@ -570,6 +598,10 @@
           },
           {
             "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "map",
             "named": true
           },
           {

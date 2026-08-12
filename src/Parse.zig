@@ -141,7 +141,7 @@ fn parsePrefixExpr(p: *Parse) Error!?Ast.Node.Index {
 
 fn startsApplicationArg(tag: Token.Tag) bool {
     return switch (tag) {
-        .keyword_true, .keyword_false, .char_literal, .number_literal, .string_literal, .identifier, .l_paren, .l_bracket => true,
+        .keyword_true, .keyword_false, .char_literal, .number_literal, .string_literal, .identifier, .l_paren, .l_bracket, .l_brace => true,
         else => false,
     };
 }
@@ -231,6 +231,7 @@ fn parsePrimaryTypeExpr(p: *Parse) !?Ast.Node.Index {
         },
         .identifier => return try p.addNode(.{ .main_token = p.nextToken(), .data = .identifier }),
         .l_bracket => return try p.expectArray(),
+        .l_brace => return try p.expectMap(),
         .l_paren => return try p.addNode(.{
             .main_token = p.nextToken(),
             .data = .{ .group = .{
@@ -262,10 +263,7 @@ fn expectMap(p: *Parse) Error!Ast.Node.Index {
 fn expectDeclaration(p: *Parse) Error!Ast.Node.Index {
     const id = try p.expectToken(.identifier);
     _ = try p.expectToken(.equal);
-    const expr = switch (p.tokenTag(p.tok_i)) {
-        .l_brace => try p.expectMap(),
-        else => try p.expectExpr(),
-    };
+    const expr = try p.expectExpr();
 
     return try p.addNode(.{ .data = .{ .declaration = .{ .lhs = id, .rhs = expr } }, .main_token = id });
 }

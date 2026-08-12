@@ -75,14 +75,14 @@ pub const Value = union(enum) {
                 try writer.writeByte(']');
             },
             .record => |fields| {
-                try writer.writeAll("{");
+                try writer.writeByte('{');
                 for (fields, 0..) |field, i| {
-                    if (i != 0) try writer.writeAll(", ");
-                    try writer.writeAll(field.name);
+                    if (i != 0) try writer.writeAll("; ");
+                    try Syntax.writeIdentifier(field.name, writer);
                     try writer.writeAll(" = ");
                     try field.value.format(writer);
                 }
-                try writer.writeAll("}");
+                try writer.writeByte('}');
             },
             .function => try writer.writeAll("<function>"),
         }
@@ -105,7 +105,7 @@ pub const TreeCursor = struct {
 
     pub const Tag = enum { map, value };
     pub const MapError = error{ExpectedMap};
-    pub const ValueError = error{ExpectedValue};
+    pub const ValueError = EvaluationError;
 
     pub fn tag(self: TreeCursor) Tag {
         return switch (self.at) {
@@ -123,7 +123,7 @@ pub const TreeCursor = struct {
     }
 
     pub fn value(self: TreeCursor) ValueError!Value {
-        return expectValue(self.at);
+        return self.interpreter.materializeValue(self.at);
     }
 
     pub fn map(self: TreeCursor) MapError!MapCursor {
@@ -270,7 +270,7 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
             const items, _ = array;
             const values = try self.arena.allocator().alloc(Value, items.len);
             for (items, values) |item, *value| {
-                value.* = try expectValue(try self.evaluateNode(item.value));
+                value.* = try self.materializeValue(try self.evaluateNode(item.value));
             }
             break :result .{ .value = .{ .array = values } };
         },
@@ -319,13 +319,45 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
                 .function => |function| function,
                 else => return error.NotCallable,
             };
-            const argument = try expectValue(try self.evaluateNode(application.arg));
+            const argument = try self.materializeValue(try self.evaluateNode(application.arg));
             break :result .{ .value = function.call(argument) };
         },
     };
 
     try self.node_states.put(node, .{ .value = result });
     return result;
+}
+
+fn materializeValue(self: *Interpreter, evaluated: Evaluated) EvaluationError!Value {
+    return switch (evaluated) {
+        .value => |value| value,
+        .source_map => |map| {
+            const declarations, _ = self.ast.nodeData(map).map;
+            const fields = try self.arena.allocator().alloc(Field, declarations.len);
+
+            const previous_state = self.node_states.get(map);
+            if (previous_state) |state| switch (state) {
+                .waiting => return error.RecursiveDefinition,
+                .value => {},
+            };
+            try self.node_states.put(map, .waiting);
+            defer {
+                if (previous_state) |state|
+                    self.node_states.put(map, state) catch unreachable
+                else
+                    _ = self.node_states.remove(map);
+            }
+
+            for (declarations, fields) |declaration_index, *field| {
+                const declaration = self.ast.nodeData(declaration_index).declaration;
+                field.* = .{
+                    .name = try self.identifierName(declaration.lhs),
+                    .value = try self.materializeValue(try self.evaluateNode(declaration.rhs)),
+                };
+            }
+            return .{ .record = fields };
+        },
+    };
 }
 
 fn getField(self: *Interpreter, parent: Evaluated, name: []const u8) EvaluationError!Evaluated {
@@ -409,12 +441,20 @@ fn increment(_: ?*anyopaque, argument: Value) Value {
     return .{ .number = argument.number + 1 };
 }
 
-test "format atom values" {
+test "format atom and record values" {
     var output: Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
 
     try (Value{ .atom = "if" }).format(&output.writer);
     try std.testing.expectEqualStrings(".@\"if\"", output.written());
+
+    output.clearRetainingCapacity();
+    const fields = [_]Field{
+        .{ .name = "plain", .value = .{ .number = 1 } },
+        .{ .name = "if", .value = .{ .boolean = true } },
+    };
+    try (Value{ .record = &fields }).format(&output.writer);
+    try std.testing.expectEqualStrings("{plain = 1; @\"if\" = true}", output.written());
 }
 
 test "evaluate paths and expressions" {
@@ -438,6 +478,8 @@ test "evaluate paths and expressions" {
         \\quoted_atom = .@"if"
         \\same_atom = .ready == .ready
         \\items = [base, nested.answer + 1, [true, false]]
+        \\records = [{ name = "first"; nested = { enabled = true } }, { name = "second" }]
+        \\projected = { answer = 42 }.answer
         \\empty = []
     );
     defer ast.deinit(std.testing.allocator) catch unreachable;
@@ -463,15 +505,29 @@ test "evaluate paths and expressions" {
     try std.testing.expectEqual(Value{ .number = 2 }, items[0]);
     try std.testing.expectEqual(Value{ .number = 7 }, items[1]);
     try std.testing.expectEqualSlices(Value, &.{ .{ .boolean = true }, .{ .boolean = false } }, items[2].array);
+
+    const records = (try interpreter.get("records")).array;
+    try std.testing.expectEqual(@as(usize, 2), records.len);
+    try std.testing.expectEqualStrings("name", records[0].record[0].name);
+    try std.testing.expectEqualStrings("first", records[0].record[0].value.string);
+    try std.testing.expectEqualStrings("nested", records[0].record[1].name);
+    try std.testing.expectEqual(Value{ .boolean = true }, records[0].record[1].value.record[0].value);
+    try std.testing.expectEqualStrings("second", records[1].record[0].value.string);
+    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("projected"));
     try std.testing.expectEqual(@as(usize, 0), (try interpreter.get("empty")).array.len);
 
     const root_cursor = try interpreter.cursor();
+    const root_value = try root_cursor.value();
+    try std.testing.expectEqualStrings("base", root_value.record[0].name);
+    try std.testing.expectEqual(Value{ .number = 2 }, root_value.record[0].value);
     const nested_cursor = try root_cursor.field("nested");
     const answer_cursor = try nested_cursor.field("answer");
     try std.testing.expectEqual(TreeCursor.Tag.map, root_cursor.tag());
     try std.testing.expectEqual(TreeCursor.Tag.map, nested_cursor.tag());
     try std.testing.expectEqual(TreeCursor.Tag.value, answer_cursor.tag());
-    try std.testing.expectError(error.ExpectedValue, nested_cursor.value());
+    const nested_value = try nested_cursor.value();
+    try std.testing.expectEqualStrings("answer", nested_value.record[0].name);
+    try std.testing.expectEqual(Value{ .number = 6 }, nested_value.record[0].value);
     try std.testing.expectError(error.ExpectedMap, answer_cursor.map());
     try std.testing.expectEqual(Value{ .number = 6 }, try answer_cursor.value());
     try std.testing.expectEqual(
@@ -548,6 +604,7 @@ test "reports lookup and evaluation errors" {
         \\map = {
         \\  value = 1
         \\}
+        \\recursive_map = { self = recursive_map }
         \\invalid_string = "\q"
         \\invalid_identifier = @"bad\q"
     );
@@ -558,7 +615,10 @@ test "reports lookup and evaluation errors" {
     defer interpreter.deinit();
 
     try std.testing.expectError(error.MissingField, interpreter.get("missing"));
-    try std.testing.expectError(error.ExpectedValue, interpreter.get("map"));
+    const map = try interpreter.get("map");
+    try std.testing.expectEqualStrings("value", map.record[0].name);
+    try std.testing.expectEqual(Value{ .number = 1 }, map.record[0].value);
+    try std.testing.expectError(error.RecursiveDefinition, interpreter.get("recursive_map"));
     try std.testing.expectError(error.RecursiveDefinition, interpreter.get("cycle_a"));
     try std.testing.expectError(error.InvalidString, interpreter.get("invalid_string"));
     try std.testing.expectError(error.InvalidIdentifier, interpreter.get("invalid_identifier"));
