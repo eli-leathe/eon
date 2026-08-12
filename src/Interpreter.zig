@@ -417,6 +417,7 @@ pub fn cursor(self: *Interpreter) CursorError!TreeCursor {
 pub fn get(self: *Interpreter, path: []const u8) GetError!Value {
     if (path.len == 0) return error.EmptyPath;
     var c = try self.cursor();
+    if (std.mem.eql(u8, path, ".")) return c.value();
 
     var it = std.mem.splitScalar(u8, path, '.');
     while (it.next()) |segment|
@@ -520,6 +521,9 @@ test "evaluate paths and expressions" {
     const root_value = try root_cursor.value();
     try std.testing.expectEqualStrings("base", root_value.record[0].name);
     try std.testing.expectEqual(Value{ .number = 2 }, root_value.record[0].value);
+    const get_root_value = try interpreter.get(".");
+    try std.testing.expectEqualStrings("base", get_root_value.record[0].name);
+    try std.testing.expectEqual(Value{ .number = 2 }, get_root_value.record[0].value);
     const nested_cursor = try root_cursor.field("nested");
     const answer_cursor = try nested_cursor.field("answer");
     try std.testing.expectEqual(TreeCursor.Tag.map, root_cursor.tag());
