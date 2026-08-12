@@ -77,12 +77,18 @@ module.exports = grammar({
 
     _primary_expression: $ => choice(
       $.identifier,
+      $.atom,
       $.boolean,
       $.number,
       $.string,
       $.character,
       $.array,
       $.parenthesized_expression,
+    ),
+
+    atom: $ => seq(
+      '.',
+      field('name', $.identifier),
     ),
 
     parenthesized_expression: $ => seq('(', $._expression, ')'),

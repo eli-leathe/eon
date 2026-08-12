@@ -45,6 +45,7 @@ pub const Node = struct {
         char_literal,
         number_literal,
         string_literal,
+        atom_literal: TokenIndex,
         identifier,
         array: struct { []ArrayItem, TokenIndex },
         group: struct { Index, TokenIndex },
@@ -131,6 +132,7 @@ fn writeTextNode(
         .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => {
             try writeTextTokenLabel(ast, writer, ast.nodes.items(.main_token)[node_i]);
         },
+        .atom_literal => |name| try writeTextTokenLabel(ast, writer, name),
         .field_access => |field| try writeTextTokenLabel(ast, writer, field.child),
         else => {},
     }
@@ -180,7 +182,7 @@ fn writeTextNode(
             try writeTextNode(ast, writer, apply.func, depth + 1, true);
             try writeTextNode(ast, writer, apply.arg, depth + 1, false);
         },
-        .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => {},
+        .boolean_literal, .char_literal, .number_literal, .string_literal, .atom_literal, .identifier => {},
     }
     try writer.writeByte(')');
     if (trailing_newline) try writer.writeByte('\n');

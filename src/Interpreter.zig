@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const Writer = std.Io.Writer;
 
 const Ast = @import("Ast.zig");
+const Syntax = @import("Syntax.zig");
 
 const Interpreter = @This();
 
@@ -42,6 +43,7 @@ pub const Field = struct {
 
 pub const Value = union(enum) {
     string: []const u8,
+    atom: []const u8,
     number: f64,
     char: u21,
     boolean: bool,
@@ -53,6 +55,10 @@ pub const Value = union(enum) {
     pub fn format(value: Value, writer: *Writer) Writer.Error!void {
         switch (value) {
             .string => |string| try writer.printStringEscaped(string),
+            .atom => |atom| {
+                try writer.writeByte('.');
+                try Syntax.writeIdentifier(atom, writer);
+            },
             .number => |float| try writer.print("{d}", .{float}),
             .char => |char| {
                 try writer.writeByte('\'');
@@ -250,6 +256,9 @@ fn evaluateNode(self: *Interpreter, node: Ast.Node.Index) EvaluationError!Evalua
                 error.InvalidLiteral => return error.InvalidString,
             } } };
         },
+        .atom_literal => |name_token| break :result .{ .value = .{
+            .atom = try self.identifierName(name_token),
+        } },
         .array => |array| {
             const items, _ = array;
             const values = try self.arena.allocator().alloc(Value, items.len);
@@ -381,6 +390,7 @@ fn valuesEqual(lhs: Value, rhs: Value) error{ValuesNotComparable}!bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return error.ValuesNotComparable;
     return switch (lhs) {
         .string => |string| std.mem.eql(u8, string, rhs.string),
+        .atom => |atom| std.mem.eql(u8, atom, rhs.atom),
         .char => |char| char == rhs.char,
         .boolean => |boolean| boolean == rhs.boolean,
         .number => |float| float == rhs.number,
@@ -390,6 +400,14 @@ fn valuesEqual(lhs: Value, rhs: Value) error{ValuesNotComparable}!bool {
 
 fn increment(_: ?*anyopaque, argument: Value) Value {
     return .{ .number = argument.number + 1 };
+}
+
+test "format atom values" {
+    var output: Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+
+    try (Value{ .atom = "if" }).format(&output.writer);
+    try std.testing.expectEqualStrings(".@\"if\"", output.written());
 }
 
 test "evaluate paths and expressions" {
@@ -409,6 +427,9 @@ test "evaluate paths and expressions" {
         \\literal_logic = enabled and disabled or true
         \\message = "hello"
         \\letter = 'x'
+        \\status = .ready
+        \\quoted_atom = .@"if"
+        \\same_atom = .ready == .ready
         \\items = [base, nested.answer + 1, [true, false]]
         \\empty = []
     );
@@ -427,6 +448,9 @@ test "evaluate paths and expressions" {
     try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("literal_logic"));
     try std.testing.expectEqualStrings("hello", (try interpreter.get("message")).string);
     try std.testing.expectEqual(@as(u21, 'x'), (try interpreter.get("letter")).char);
+    try std.testing.expectEqualStrings("ready", (try interpreter.get("status")).atom);
+    try std.testing.expectEqualStrings("if", (try interpreter.get("quoted_atom")).atom);
+    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("same_atom"));
     const items = (try interpreter.get("items")).array;
     try std.testing.expectEqual(@as(usize, 3), items.len);
     try std.testing.expectEqual(Value{ .number = 2 }, items[0]);

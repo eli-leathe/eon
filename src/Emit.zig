@@ -2,7 +2,7 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 
 const Interpreter = @import("Interpreter.zig");
-const Tokenizer = @import("Tokenizer.zig");
+const Syntax = @import("Syntax.zig");
 
 pub const Field = Interpreter.Field;
 pub const Value = Interpreter.Value;
@@ -20,47 +20,20 @@ pub fn emit(fields: []const Field, writer: *Writer) Error!void {
 fn emitFields(fields: []const Field, writer: *Writer, depth: usize) Error!void {
     for (fields) |field| {
         try writer.splatByteAll(' ', depth * 2);
-        try emitIdentifier(field.name, writer);
+        try Syntax.writeIdentifier(field.name, writer);
         try writer.writeAll(" = ");
         try emitValue(field.value, writer, depth);
         try writer.writeByte('\n');
     }
 }
 
-fn emitIdentifier(name: []const u8, writer: *Writer) Writer.Error!void {
-    if (isBareIdentifier(name) and Tokenizer.Token.getKeyword(name) == null) {
-        try writer.writeAll(name);
-    } else {
-        try writer.writeByte('@');
-        try writer.printStringEscaped(name);
-    }
-}
-
-fn isBareIdentifier(name: []const u8) bool {
-    if (name.len == 0 or !isIdentifierStart(name[0])) return false;
-    for (name[1..]) |byte| {
-        if (!isIdentifierContinue(byte)) return false;
-    }
-    return true;
-}
-
-fn isIdentifierStart(byte: u8) bool {
-    return switch (byte) {
-        'a'...'z', 'A'...'Z', '_' => true,
-        else => false,
-    };
-}
-
-fn isIdentifierContinue(byte: u8) bool {
-    return isIdentifierStart(byte) or switch (byte) {
-        '0'...'9' => true,
-        else => false,
-    };
-}
-
 fn emitValue(value: Value, writer: *Writer, depth: usize) Error!void {
     switch (value) {
         .string => |string| try writer.printStringEscaped(string),
+        .atom => |atom| {
+            try writer.writeByte('.');
+            try Syntax.writeIdentifier(atom, writer);
+        },
         .number => |number| {
             if (!std.math.isFinite(number)) return error.InvalidNumber;
             try writer.print("{d}", .{number});
@@ -106,6 +79,8 @@ test "emit key-value document" {
     const fields = [_]Field{
         .{ .name = "name", .value = .{ .string = "demo" } },
         .{ .name = "enabled", .value = .{ .boolean = true } },
+        .{ .name = "status", .value = .{ .atom = "ready" } },
+        .{ .name = "keyword_status", .value = .{ .atom = "if" } },
         .{ .name = "if", .value = .{ .number = 3 } },
         .{ .name = "quote\"name", .value = .{ .string = "line\n\"two\"\\" } },
         .{ .name = "quote", .value = .{ .char = '\'' } },
@@ -120,6 +95,8 @@ test "emit key-value document" {
     try std.testing.expectEqualStrings(
         \\name = "demo"
         \\enabled = true
+        \\status = .ready
+        \\keyword_status = .@"if"
         \\@"if" = 3
         \\@"quote\"name" = "line\n\"two\"\\"
         \\quote = '\''
@@ -141,6 +118,8 @@ test "emit key-value document" {
     var interpreter = Interpreter.init(std.testing.allocator, ast);
     defer interpreter.deinit();
     try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("enabled"));
+    try std.testing.expectEqualStrings("ready", (try interpreter.get("status")).atom);
+    try std.testing.expectEqualStrings("if", (try interpreter.get("keyword_status")).atom);
     try std.testing.expectEqual(Value{ .number = 3 }, try interpreter.get("if"));
     try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
     try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);

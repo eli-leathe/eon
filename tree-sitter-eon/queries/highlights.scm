@@ -8,6 +8,7 @@
 (identifier) @variable
 (declaration name: (identifier) @property)
 (field_expression field: (identifier) @property)
+(atom name: (identifier) @constant)
 
 [
   "and"

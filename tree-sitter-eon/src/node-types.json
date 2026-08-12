@@ -12,6 +12,10 @@
             "named": true
           },
           {
+            "type": "atom",
+            "named": true
+          },
+          {
             "type": "boolean",
             "named": true
           },
@@ -47,6 +51,10 @@
         "types": [
           {
             "type": "array",
+            "named": true
+          },
+          {
+            "type": "atom",
             "named": true
           },
           {
@@ -98,6 +106,10 @@
             "named": true
           },
           {
+            "type": "atom",
+            "named": true
+          },
+          {
             "type": "binary_expression",
             "named": true
           },
@@ -138,6 +150,22 @@
     }
   },
   {
+    "type": "atom",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "binary_expression",
     "named": true,
     "fields": {
@@ -151,6 +179,10 @@
           },
           {
             "type": "array",
+            "named": true
+          },
+          {
+            "type": "atom",
             "named": true
           },
           {
@@ -238,6 +270,10 @@
             "named": true
           },
           {
+            "type": "atom",
+            "named": true
+          },
+          {
             "type": "binary_expression",
             "named": true
           },
@@ -309,6 +345,10 @@
             "named": true
           },
           {
+            "type": "atom",
+            "named": true
+          },
+          {
             "type": "binary_expression",
             "named": true
           },
@@ -375,6 +415,10 @@
             "named": true
           },
           {
+            "type": "atom",
+            "named": true
+          },
+          {
             "type": "boolean",
             "named": true
           },
@@ -435,6 +479,10 @@
         },
         {
           "type": "array",
+          "named": true
+        },
+        {
+          "type": "atom",
           "named": true
         },
         {
@@ -502,6 +550,10 @@
         "types": [
           {
             "type": "array",
+            "named": true
+          },
+          {
+            "type": "atom",
             "named": true
           },
           {

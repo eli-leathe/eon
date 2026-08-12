@@ -64,6 +64,10 @@ const Render = struct {
                 const token = r.ast.nodeMainToken(index);
                 try r.renderToken(token, space);
             },
+            .atom_literal => |name| {
+                try r.renderToken(r.ast.nodeMainToken(index), .none);
+                try r.renderToken(name, space);
+            },
             .array => |array| {
                 const items, const r_bracket = array;
                 const multiline = items.len != 0 and items[items.len - 1].comma != null;
@@ -262,7 +266,7 @@ test "canonical formatting" {
     var ast = try @import("Parse.zig").parse(
         std.testing.allocator,
         arena.allocator(),
-        "test={first=1;second=test.first*2;}",
+        "test={first=1;second=test.first*2;};status=.ready",
     );
     defer ast.deinit(std.testing.allocator) catch unreachable;
 
@@ -275,6 +279,7 @@ test "canonical formatting" {
         \\  first = 1
         \\  second = test.first * 2
         \\}
+        \\status = .ready
         \\
     , output.written());
 }

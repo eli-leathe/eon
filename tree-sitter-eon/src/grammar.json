@@ -528,6 +528,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "atom"
+        },
+        {
+          "type": "SYMBOL",
           "name": "boolean"
         },
         {
@@ -549,6 +553,23 @@
         {
           "type": "SYMBOL",
           "name": "parenthesized_expression"
+        }
+      ]
+    },
+    "atom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "."
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
         }
       ]
     },

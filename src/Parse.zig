@@ -222,6 +222,13 @@ fn parsePrimaryTypeExpr(p: *Parse) !?Ast.Node.Index {
         .char_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .char_literal }),
         .number_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .number_literal }),
         .string_literal => return try p.addNode(.{ .main_token = p.nextToken(), .data = .string_literal }),
+        .period => {
+            const period = p.nextToken();
+            return try p.addNode(.{
+                .main_token = period,
+                .data = .{ .atom_literal = try p.expectToken(.identifier) },
+            });
+        },
         .identifier => return try p.addNode(.{ .main_token = p.nextToken(), .data = .identifier }),
         .l_bracket => return try p.expectArray(),
         .l_paren => return try p.addNode(.{

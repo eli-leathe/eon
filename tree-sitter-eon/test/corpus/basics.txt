@@ -164,3 +164,38 @@ first=1; second=first+1 // trailing
       left: (identifier)
       right: (number)))
   (comment))
+
+==================
+atoms
+==================
+
+status = .ready
+keyword = .@"if"
+comparison = .ready == .done
+items = [.one, .two]
+
+---
+
+(source_file
+  (declaration
+    name: (identifier)
+    value: (atom
+      name: (identifier)))
+  (declaration
+    name: (identifier)
+    value: (atom
+      name: (identifier)))
+  (declaration
+    name: (identifier)
+    value: (binary_expression
+      left: (atom
+        name: (identifier))
+      right: (atom
+        name: (identifier))))
+  (declaration
+    name: (identifier)
+    value: (array
+      element: (atom
+        name: (identifier))
+      element: (atom
+        name: (identifier)))))
