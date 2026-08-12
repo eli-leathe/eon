@@ -282,7 +282,7 @@ fn parseDeclarations(p: *Parse) Error![]Ast.Node.Index {
         }
 
         switch (p.tokenTag(p.tok_i)) {
-            .eof => break,
+            .eof, .r_brace => break,
             .nl, .semicolon => while (p.eatToken(.nl) orelse p.eatToken(.semicolon) != null) {},
             else => try p.fail(.expected_declaration_separator),
         }

@@ -42,13 +42,28 @@ const Render = struct {
         switch (data) {
             .map => |m| {
                 const declarations, const r_brace = m;
-                try r.renderToken(r.ast.nodeMainToken(index), .newline);
-                r.indent += 1;
-                for (declarations) |declaration| {
-                    try r.renderNode(declaration, .newline);
+                // r_brace == 0 for root, for root, never allow to compact
+                const multiline = declarations.len != 0 and r_brace != 0 and switch (r.ast.tokenTag(r_brace - 1)) {
+                    .nl, .semicolon => true,
+                    else => false,
+                };
+
+                try r.renderToken(r.ast.nodeMainToken(index), if (multiline) .newline else if (declarations.len == 0) .none else .space);
+
+                if (multiline) r.indent += 1;
+                for (declarations, 0..) |declaration, i| {
+                    const last = i + 1 == declarations.len;
+                    try r.renderNode(declaration, if (multiline) .newline else if (last) .space else .none);
+
+                    // when inline, separate with "; "
+                    if (!multiline and !last) {
+                        try r.writeAll(";");
+                        r.pending_space = .space;
+                    }
                 }
+
                 try r.prepareToken(r_brace);
-                r.indent -= 1;
+                if (multiline) r.indent -= 1;
                 try r.writePreparedToken(r_brace, space);
             },
             .declaration => |declaration| {
@@ -311,6 +326,46 @@ test "array trailing comma selects multiline formatting" {
         \\  1,
         \\  base + 1,
         \\]
+        \\
+    , output.written());
+}
+
+test "map trailing separator selects multiline formatting" {
+    const source =
+        \\compact={first=1;second={nested=true}}
+        \\newline={first=1;second={nested=true
+        \\}
+        \\}
+        \\semicolon={first=1;second={nested=true;};}
+        \\empty={
+        \\}
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(), source);
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+    try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
+
+    var output: Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try render(&ast, &output.writer);
+
+    try std.testing.expectEqualStrings(
+        \\compact = { first = 1; second = { nested = true } }
+        \\newline = {
+        \\  first = 1
+        \\  second = {
+        \\    nested = true
+        \\  }
+        \\}
+        \\semicolon = {
+        \\  first = 1
+        \\  second = {
+        \\    nested = true
+        \\  }
+        \\}
+        \\empty = {}
         \\
     , output.written());
 }
