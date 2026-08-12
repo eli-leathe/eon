@@ -24,7 +24,7 @@ pub const EvaluationError = IdentifierError || error{
 };
 pub const FieldError = EvaluationError || error{InvalidPath};
 pub const CursorError = error{InvalidAst};
-pub const GetError = CursorError || FieldError || error{EmptyPath};
+pub const GetError = CursorError || FieldError || error{EmptyPath} || EvaluationError;
 pub const Error = GetError;
 
 pub const NativeFunction = struct {
@@ -517,16 +517,16 @@ pub fn cursor(self: *Interpreter) CursorError!TreeCursor {
     return .{ .interpreter = self, .at = .{ .map = .root } };
 }
 
-pub fn get(self: *Interpreter, path: []const u8) GetError!Value {
+pub fn get(self: *Interpreter, path: []const u8) GetError!MaterializedValue {
     if (path.len == 0) return error.EmptyPath;
     var c = try self.cursor();
-    if (std.mem.eql(u8, path, ".")) return c.value();
+    if (std.mem.eql(u8, path, ".")) return c.materialize();
 
     var it = std.mem.splitScalar(u8, path, '.');
     while (it.next()) |segment|
         c = try c.field(segment);
 
-    return c.value();
+    return try c.materialize();
 }
 
 fn valuesEqual(lhs: Value, rhs: Value) error{ValuesNotComparable}!bool {
@@ -588,18 +588,18 @@ test "evaluate paths and expressions" {
     var interpreter = init(std.testing.allocator, ast);
     defer interpreter.deinit();
 
-    try std.testing.expectEqual(Value{ .number = 6 }, try interpreter.get("forward"));
-    try std.testing.expectEqual(Value{ .number = 6 }, try interpreter.get("nested.answer"));
-    try std.testing.expectEqual(Value{ .number = 2.5 }, try interpreter.get("fraction"));
-    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("short"));
-    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("enabled"));
-    try std.testing.expectEqual(Value{ .boolean = false }, try interpreter.get("disabled"));
-    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("literal_logic"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 6 }, try interpreter.get("forward"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 6 }, try interpreter.get("nested.answer"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 2.5 }, try interpreter.get("fraction"));
+    try std.testing.expectEqual(MaterializedValue{ .boolean = true }, try interpreter.get("short"));
+    try std.testing.expectEqual(MaterializedValue{ .boolean = true }, try interpreter.get("enabled"));
+    try std.testing.expectEqual(MaterializedValue{ .boolean = false }, try interpreter.get("disabled"));
+    try std.testing.expectEqual(MaterializedValue{ .boolean = true }, try interpreter.get("literal_logic"));
     try std.testing.expectEqualStrings("hello", (try interpreter.get("message")).string);
     try std.testing.expectEqual(@as(u21, 'x'), (try interpreter.get("letter")).char);
     try std.testing.expectEqualStrings("ready", (try interpreter.get("status")).atom);
     try std.testing.expectEqualStrings("if", (try interpreter.get("quoted_atom")).atom);
-    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("same_atom"));
+    try std.testing.expectEqual(MaterializedValue{ .boolean = true }, try interpreter.get("same_atom"));
     const root_cursor = try interpreter.cursor();
     const items = try (try root_cursor.field("items")).array();
     try std.testing.expectEqual(@as(usize, 3), items.len());
@@ -621,11 +621,10 @@ test "evaluate paths and expressions" {
         try (try (try first_record.field("nested")).field("enabled")).value(),
     );
     try std.testing.expectEqualStrings("second", (try (try (try records.item(1)).field("name")).value()).string);
-    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("projected"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 42 }, try interpreter.get("projected"));
     try std.testing.expectEqual(@as(usize, 0), (try (try root_cursor.field("empty")).array()).len());
 
     try std.testing.expectError(error.ExpectedValue, root_cursor.value());
-    try std.testing.expectError(error.ExpectedValue, interpreter.get("."));
     const root_value = (try root_cursor.materialize()).record;
     try std.testing.expectEqualStrings("base", root_value[0].name);
     try std.testing.expectEqual(MaterializedValue{ .number = 2 }, root_value[0].value);
@@ -666,9 +665,9 @@ test "quoted identifiers can use keyword names" {
     var interpreter = init(std.testing.allocator, ast);
     defer interpreter.deinit();
 
-    try std.testing.expectEqual(Value{ .number = 40 }, try interpreter.get("if"));
-    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("and"));
-    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("nested.or\"else"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 40 }, try interpreter.get("if"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 42 }, try interpreter.get("and"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 42 }, try interpreter.get("nested.or\"else"));
     try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
     try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);
 
@@ -763,7 +762,6 @@ test "reports lookup and evaluation errors" {
     defer interpreter.deinit();
 
     try std.testing.expectError(error.MissingField, interpreter.get("missing"));
-    try std.testing.expectError(error.ExpectedValue, interpreter.get("map"));
     const map = try (try (try interpreter.cursor()).field("map")).map();
     try std.testing.expectEqual(Value{ .number = 1 }, try (try map.field("value")).value());
     const recursive_map = try (try interpreter.cursor()).field("recursive_map");
@@ -791,5 +789,5 @@ test "host functions" {
     var interpreter = initWithBindings(std.testing.allocator, ast, &bindings);
     defer interpreter.deinit();
 
-    try std.testing.expectEqual(Value{ .number = 42 }, try interpreter.get("answer"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 42 }, try interpreter.get("answer"));
 }

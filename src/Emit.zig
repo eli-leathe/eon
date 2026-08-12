@@ -2,11 +2,10 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 
 const Interpreter = @import("Interpreter.zig");
-const Syntax = @import("Syntax.zig");
-
 pub const Field = Interpreter.MaterializedField;
 pub const Value = Interpreter.MaterializedValue;
 pub const Scalar = Interpreter.Value;
+const Syntax = @import("Syntax.zig");
 
 pub const Error = Writer.Error || error{
     InvalidNumber,
@@ -118,13 +117,13 @@ test "emit key-value document" {
 
     var interpreter = Interpreter.init(std.testing.allocator, ast);
     defer interpreter.deinit();
-    try std.testing.expectEqual(Scalar{ .boolean = true }, try interpreter.get("enabled"));
+    try std.testing.expectEqual(Value{ .boolean = true }, try interpreter.get("enabled"));
     try std.testing.expectEqualStrings("ready", (try interpreter.get("status")).atom);
     try std.testing.expectEqualStrings("if", (try interpreter.get("keyword_status")).atom);
-    try std.testing.expectEqual(Scalar{ .number = 3 }, try interpreter.get("if"));
+    try std.testing.expectEqual(Value{ .number = 3 }, try interpreter.get("if"));
     try std.testing.expectEqualStrings("line\n\"two\"\\", (try interpreter.get("quote\"name")).string);
     try std.testing.expectEqual(@as(u21, '\''), (try interpreter.get("quote")).char);
     const items_cursor = try (try (try interpreter.cursor()).field("items")).array();
     try std.testing.expectEqual(@as(usize, 3), items_cursor.len());
-    try std.testing.expectEqual(Scalar{ .number = 8080 }, try interpreter.get("server.port"));
+    try std.testing.expectEqual(Value{ .number = 8080 }, try interpreter.get("server.port"));
 }
