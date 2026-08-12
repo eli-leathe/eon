@@ -150,6 +150,13 @@ pub const MapCursor = struct {
     pub fn fields(self: MapCursor) MapFieldIterator {
         return .{ .interpreter = self.interpreter, .at = self.at, .index = 0 };
     }
+    pub fn len(self: MapCursor) usize {
+        const declarations = switch (self.interpreter.ast.nodeData(self.at)) {
+            .map => |declarations| declarations[0],
+            else => unreachable,
+        };
+        return declarations.len;
+    }
 
     const MapFieldIterator = struct {
         interpreter: *Interpreter,
