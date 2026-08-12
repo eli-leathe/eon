@@ -176,7 +176,7 @@ fn parseSuffixExpr(p: *Parse) !?Ast.Node.Index {
 fn parseSuffixOp(p: *Parse, lhs: Ast.Node.Index) !?Ast.Node.Index {
     switch (p.tokenTag(p.tok_i)) {
         .period => switch (p.tokenTag(p.tok_i + 1)) {
-            .identifier => return try p.addNode(.{
+            .identifier, .number_literal => return try p.addNode(.{
                 .main_token = p.nextToken(),
                 .data = .{ .field_access = .{ .parent = lhs, .child = p.nextToken() } },
             }),
@@ -341,4 +341,16 @@ pub fn parseTokens(
         .nodes = parser.nodes.toOwnedSlice(),
         .errors = parser.errors.toOwnedSliceAssert(),
     };
+}
+
+test "integer field access" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try parse(std.testing.allocator, arena.allocator(), "value = a.0");
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+    try std.testing.expectEqual(@as(usize, 0), ast.errors.len);
+
+    const declaration = ast.nodeData(.root).map[0][0];
+    const access = ast.nodeData(ast.nodeData(declaration).declaration.rhs).field_access;
+    try std.testing.expectEqualStrings("0", ast.tokenSlice(access.child));
 }

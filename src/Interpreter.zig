@@ -492,13 +492,22 @@ fn materializeValue(self: *Interpreter, evaluated: Evaluated) EvaluationError!Ma
     };
 }
 
-fn getField(self: *Interpreter, parent: Evaluated, name: []const u8) EvaluationError!Evaluated {
+fn getField(self: *Interpreter, parent: Evaluated, field: []const u8) EvaluationError!Evaluated {
     return switch (parent) {
-        .map => |map| if (try self.findDeclaration(map, name)) |rhs|
+        .map => |map| if (try self.findDeclaration(map, field)) |rhs|
             self.evaluateNode(rhs, map)
         else
             error.MissingField,
-        .array, .value => error.InvalidFieldAccess,
+        .array => |array| {
+            const index = std.fmt.parseInt(usize, field, 10) catch return error.MissingField;
+            const source_items = self.ast.nodeData(array).array[0];
+            if (index >= source_items.len) return error.MissingField;
+            return self.evaluateNode(
+                source_items[index].value,
+                self.parent_scopes.get(array) orelse unreachable,
+            );
+        },
+        .value => error.InvalidFieldAccess,
     };
 }
 
@@ -621,6 +630,7 @@ test "evaluate paths and expressions" {
         \\quoted_atom = .@"if"
         \\same_atom = .ready == .ready
         \\items = [base, nested.answer + 1, [true, false]]
+        \\first_item = items.0
         \\records = [{ name = "first"; nested = { enabled = true } }, { name = "second" }]
         \\projected = { answer = 42 }.answer
         \\empty = []
@@ -642,6 +652,8 @@ test "evaluate paths and expressions" {
     try std.testing.expectEqual(@as(u21, 'x'), (try interpreter.get("letter")).char);
     try std.testing.expectEqualStrings("ready", (try interpreter.get("status")).atom);
     try std.testing.expectEqualStrings("if", (try interpreter.get("quoted_atom")).atom);
+    try std.testing.expectEqual(MaterializedValue{ .number = 2 }, try interpreter.get("first_item"));
+    try std.testing.expectEqual(MaterializedValue{ .number = 2 }, try interpreter.get("items.0"));
     try std.testing.expectEqual(MaterializedValue{ .boolean = true }, try interpreter.get("same_atom"));
     const root_cursor = try interpreter.cursor();
     const items = try (try root_cursor.field("items")).array();
