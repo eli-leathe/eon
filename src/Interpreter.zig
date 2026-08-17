@@ -21,17 +21,25 @@ pub const EvaluationError = IdentifierError || error{
     NotCallable,
     UndefinedIdentifier,
     RecursiveDefinition,
+    ExpectedMap,
+    ExpectedArray,
+    InvalidPath,
 };
-pub const FieldError = EvaluationError || error{InvalidPath};
+pub const FieldError = EvaluationError;
 pub const CursorError = error{InvalidAst};
 pub const GetError = CursorError || FieldError || error{EmptyPath} || EvaluationError;
 pub const Error = GetError;
 
+/// A function supplied by the embedding application.
+///
+/// The argument cursor can represent a scalar value, record, or array and is
+/// valid for the lifetime of the interpreter. Errors returned by the callback
+/// are propagated as evaluation errors.
 pub const NativeFunction = struct {
     context: ?*anyopaque = null,
-    call_fn: *const fn (context: ?*anyopaque, argument: Value) Value,
+    call_fn: *const fn (context: ?*anyopaque, argument: TreeCursor) EvaluationError!Value,
 
-    pub fn call(self: NativeFunction, argument: Value) Value {
+    pub fn call(self: NativeFunction, argument: TreeCursor) EvaluationError!Value {
         return self.call_fn(self.context, argument);
     }
 };
@@ -426,8 +434,11 @@ fn evaluateNode(
                 .function => |function| function,
                 else => return error.NotCallable,
             };
-            const argument = try expectValue(try self.evaluateNode(application.arg, parent_scope));
-            break :result .{ .value = function.call(argument) };
+            const argument = TreeCursor{
+                .interpreter = self,
+                .at = try self.evaluateNode(application.arg, parent_scope),
+            };
+            break :result .{ .value = try function.call(argument) };
         },
     };
 
@@ -879,7 +890,7 @@ test "reports lookup and evaluation errors" {
     try std.testing.expectError(error.InvalidIdentifier, interpreter.get("invalid_identifier"));
 }
 
-test "host functions" {
+test "host functions receive scalar cursors" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var ast = try @import("Parse.zig").parse(
@@ -890,12 +901,85 @@ test "host functions" {
     defer ast.deinit(std.testing.allocator) catch unreachable;
 
     const bindings = [_]Binding{.{ .name = "increment", .value = .{ .function = .{ .call_fn = struct {
-        fn increment(_: ?*anyopaque, argument: Value) Value {
-            return .{ .number = argument.number + 1 };
+        fn increment(_: ?*anyopaque, argument: TreeCursor) EvaluationError!Value {
+            return .{ .number = switch (try argument.value()) {
+                .number => |number| number + 1,
+                else => return error.UnexpectedType,
+            } };
         }
     }.increment } } }};
     var interpreter = initWithBindings(std.testing.allocator, ast, &bindings);
     defer interpreter.deinit();
 
     try std.testing.expectEqual(MaterializedValue{ .number = 42 }, try interpreter.get("answer"));
+}
+
+test "host functions receive records and can return one field" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(),
+        \\movement = {
+        \\  speed = dragFloat { value = 5; start = 0; end = 100; scale = .log }
+        \\}
+    );
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+
+    const DragFloat = struct {
+        start: f64 = undefined,
+        end: f64 = undefined,
+        logarithmic: bool = undefined,
+
+        fn call(context: ?*anyopaque, argument: TreeCursor) EvaluationError!Value {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            const options = try argument.map();
+            self.start = try numberField(options, "start");
+            self.end = try numberField(options, "end");
+            self.logarithmic = switch (try (try options.field("scale")).value()) {
+                .atom => |atom| std.mem.eql(u8, atom, "log"),
+                else => return error.UnexpectedType,
+            };
+            return .{ .number = try numberField(options, "value") };
+        }
+
+        fn numberField(options: MapCursor, name: []const u8) EvaluationError!f64 {
+            return switch (try (try options.field(name)).value()) {
+                .number => |number| number,
+                else => error.UnexpectedType,
+            };
+        }
+    };
+
+    var drag_float: DragFloat = .{};
+    const bindings = [_]Binding{.{ .name = "dragFloat", .value = .{ .function = .{
+        .context = &drag_float,
+        .call_fn = DragFloat.call,
+    } } }};
+    var interpreter = initWithBindings(std.testing.allocator, ast, &bindings);
+    defer interpreter.deinit();
+
+    try std.testing.expectEqual(MaterializedValue{ .number = 5 }, try interpreter.get("movement.speed"));
+    try std.testing.expectEqual(@as(f64, 0), drag_float.start);
+    try std.testing.expectEqual(@as(f64, 100), drag_float.end);
+    try std.testing.expect(drag_float.logarithmic);
+}
+
+test "host function errors propagate" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(
+        std.testing.allocator,
+        arena.allocator(),
+        "value = requiredField {}",
+    );
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+
+    const bindings = [_]Binding{.{ .name = "requiredField", .value = .{ .function = .{ .call_fn = struct {
+        fn call(_: ?*anyopaque, argument: TreeCursor) EvaluationError!Value {
+            return (try (try argument.map()).field("missing")).value();
+        }
+    }.call } } }};
+    var interpreter = initWithBindings(std.testing.allocator, ast, &bindings);
+    defer interpreter.deinit();
+
+    try std.testing.expectError(error.MissingField, interpreter.get("value"));
 }

@@ -81,6 +81,39 @@ Validate a file without producing output:
 Embedded applications can generate key/value documents with `eon.Emit.emit`,
 passing a slice of `eon.Emit.Field` values and an `std.Io.Writer`.
 
+Applications can also provide host functions with
+`eon.Interpreter.initWithBindings`. A host function receives a `TreeCursor`, so
+its argument can be a scalar, record, or array. It returns a scalar Eon value,
+and any evaluation error it returns is propagated to the caller. For example,
+the Eon expression:
+
+```eon
+speed = dragFloat { value = 5; start = 0; end = 100; scale = .log }
+```
+
+can be embedded as:
+
+```zig
+const Interpreter = eon.Interpreter;
+
+fn dragFloat(_: ?*anyopaque, argument: Interpreter.TreeCursor) Interpreter.EvaluationError!Interpreter.Value {
+    const options = try argument.map();
+    return switch (try (try options.field("value")).value()) {
+        .number => |number| .{ .number = number },
+        else => error.UnexpectedType,
+    };
+}
+
+const bindings = [_]Interpreter.Binding{.{
+    .name = "dragFloat",
+    .value = .{ .function = .{ .call_fn = dragFloat } },
+}};
+var interpreter = Interpreter.initWithBindings(allocator, ast, &bindings);
+```
+
+This allows an embedding layer to retain UI metadata while exposing the
+function's numeric result to configuration consumers.
+
 Other commands are listed by:
 
 ```sh
