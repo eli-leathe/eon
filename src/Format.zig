@@ -2,14 +2,29 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 
 const Ast = @import("Ast.zig");
+const Tree = @import("Tree.zig");
 
 const indent_width = 2;
 
+pub const RenderError = Writer.Error || error{UnsupportedVirtualNode};
+
 pub fn render(ast: *const Ast, writer: *Writer) Writer.Error!void {
+    renderInternal(ast, null, writer) catch |err| switch (err) {
+        error.UnsupportedVirtualNode => unreachable,
+        else => |write_error| return write_error,
+    };
+}
+
+pub fn renderMerged(tree: *const Tree.Merge, writer: *Writer) RenderError!void {
+    return renderInternal(tree.parsed.ast, tree, writer);
+}
+
+fn renderInternal(ast: *const Ast, merge: ?*const Tree.Merge, writer: *Writer) RenderError!void {
     std.debug.assert(ast.errors.len == 0);
 
     var r: Render = .{
         .ast = ast,
+        .merge = merge,
         .writer = writer,
     };
     try r.renderRoot();
@@ -23,6 +38,7 @@ const Space = enum {
 
 const Render = struct {
     ast: *const Ast,
+    merge: ?*const Tree.Merge,
     writer: *Writer,
     source_cursor: usize = 0,
     pending_space: Space = .none,
@@ -30,14 +46,17 @@ const Render = struct {
     line_start: bool = true,
     wrote_anything: bool = false,
 
-    fn renderRoot(r: *Render) Writer.Error!void {
+    fn renderRoot(r: *Render) RenderError!void {
         for (r.ast.nodeData(.root).map[0]) |declaration| {
             _ = try r.renderNode(declaration, .newline);
         }
         try r.renderGap(r.ast.source.len);
     }
 
-    fn renderNode(r: *Render, index: Ast.Node.Index, space: Space) Writer.Error!void {
+    fn renderNode(r: *Render, index: Ast.Node.Index, space: Space) RenderError!void {
+        if (r.merge) |merge| if (merge.replacement(index)) |replacement| {
+            return r.renderVirtual(index, replacement, space);
+        };
         const data = r.ast.nodeData(index);
         switch (data) {
             .map => |m| {
@@ -127,18 +146,37 @@ const Render = struct {
         }
     }
 
-    fn renderToken(r: *Render, token_index: Ast.TokenIndex, space: Space) Writer.Error!void {
+    fn renderVirtual(r: *Render, source_node: Ast.Node.Index, virtual_node: Tree.Virtual.Node, space: Space) RenderError!void {
+        const range = r.ast.nodeRange(source_node);
+        std.debug.assert(range.start >= r.source_cursor);
+        try r.renderGap(range.start);
+        switch (virtual_node) {
+            .value => |value| {
+                switch (value) {
+                    .function => return error.UnsupportedVirtualNode,
+                    .number => |number| if (!std.math.isFinite(number)) return error.UnsupportedVirtualNode,
+                    else => {},
+                }
+                try r.beginDirectWrite();
+                try value.format(r.writer);
+            },
+        }
+        r.source_cursor = range.end;
+        r.pending_space = space;
+    }
+
+    fn renderToken(r: *Render, token_index: Ast.TokenIndex, space: Space) RenderError!void {
         try r.prepareToken(token_index);
         try r.writePreparedToken(token_index, space);
     }
 
-    fn prepareToken(r: *Render, token_index: Ast.TokenIndex) Writer.Error!void {
+    fn prepareToken(r: *Render, token_index: Ast.TokenIndex) RenderError!void {
         const token_start = r.ast.tokenStart(token_index);
         std.debug.assert(token_start >= r.source_cursor);
         try r.renderGap(token_start);
     }
 
-    fn writePreparedToken(r: *Render, token_index: Ast.TokenIndex, space: Space) Writer.Error!void {
+    fn writePreparedToken(r: *Render, token_index: Ast.TokenIndex, space: Space) RenderError!void {
         const token_start = r.ast.tokenStart(token_index);
         std.debug.assert(r.source_cursor == token_start);
 
@@ -151,7 +189,7 @@ const Render = struct {
     /// Canonicalize whitespace while preserving every line comment in the
     /// source gap between two AST tokens. Ordinary comments intentionally do
     /// not need tokens of their own; this is the same model used by zig fmt.
-    fn renderGap(r: *Render, end: usize) Writer.Error!void {
+    fn renderGap(r: *Render, end: usize) RenderError!void {
         std.debug.assert(end >= r.source_cursor);
         const source = r.ast.source;
         var index = r.source_cursor;
@@ -208,7 +246,7 @@ const Render = struct {
         r.source_cursor = end;
     }
 
-    fn applyPendingSpace(r: *Render) Writer.Error!void {
+    fn applyPendingSpace(r: *Render) RenderError!void {
         const space = r.pending_space;
         r.pending_space = .none;
         switch (space) {
@@ -218,7 +256,15 @@ const Render = struct {
         }
     }
 
-    fn writeAll(r: *Render, bytes: []const u8) Writer.Error!void {
+    fn beginDirectWrite(r: *Render) RenderError!void {
+        if (r.line_start) {
+            try r.writer.splatByteAll(' ', r.indent * indent_width);
+            r.line_start = false;
+        }
+        r.wrote_anything = true;
+    }
+
+    fn writeAll(r: *Render, bytes: []const u8) RenderError!void {
         if (bytes.len == 0) return;
         if (r.line_start) {
             try r.writer.splatByteAll(' ', r.indent * indent_width);
@@ -228,14 +274,14 @@ const Render = struct {
         r.wrote_anything = true;
     }
 
-    fn ensureNewline(r: *Render) Writer.Error!void {
+    fn ensureNewline(r: *Render) RenderError!void {
         if (r.line_start) return;
         try r.writer.writeByte('\n');
         r.line_start = true;
         r.wrote_anything = true;
     }
 
-    fn insertBlankLine(r: *Render) Writer.Error!void {
+    fn insertBlankLine(r: *Render) RenderError!void {
         if (!r.wrote_anything) return;
         try r.ensureNewline();
         try r.writer.writeByte('\n');
@@ -273,6 +319,36 @@ fn lineBreakCount(bytes: []const u8) usize {
         }
     }
     return count;
+}
+
+test "merged formatting replaces a subtree with a virtual value" {
+    const source =
+        \\speed = 5 * 2 // retained
+        \\other = 3
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(), source);
+    defer ast.deinit(std.testing.allocator) catch unreachable;
+
+    const declaration = ast.nodeData(.root).map[0][0];
+    const value_node = ast.nodeData(declaration).declaration.rhs;
+    var virtual: Tree.Virtual = .{};
+    defer virtual.deinit(std.testing.allocator);
+    const replacement = try virtual.addValue(std.testing.allocator, .{ .number = 42.5 });
+    var merge = Tree.Merge.init(&ast, &virtual);
+    defer merge.deinit(std.testing.allocator);
+    try merge.mount(std.testing.allocator, .{ .index = value_node }, replacement);
+
+    var output: Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try renderMerged(&merge, &output.writer);
+
+    try std.testing.expectEqualStrings(
+        \\speed = 42.5 // retained
+        \\other = 3
+        \\
+    , output.written());
 }
 
 test "canonical formatting" {

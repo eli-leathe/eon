@@ -114,6 +114,26 @@ var interpreter = Interpreter.initWithBindings(allocator, ast, &bindings);
 This allows an embedding layer to retain UI metadata while exposing the
 function's numeric result to configuration consumers.
 
+Semantic edits can be rendered through three tree views:
+
+- `eon.Tree.Parsed` wraps the parsed AST and its source locations.
+- `eon.Tree.Virtual` contains synthesized nodes with no source locations.
+- `eon.Tree.Merge` mounts virtual subtrees over parsed nodes while retaining
+  the parsed mount points as formatting and comment anchors.
+
+For example, a parsed expression can be replaced without mutating its AST:
+
+```zig
+var virtual: eon.Tree.Virtual = .{};
+defer virtual.deinit(allocator);
+const replacement = try virtual.addValue(allocator, .{ .number = 42.5 });
+
+var merged = eon.Tree.Merge.init(&ast, &virtual);
+defer merged.deinit(allocator);
+try merged.mount(allocator, value_node, replacement);
+try eon.Format.renderMerged(&merged, writer);
+```
+
 Other commands are listed by:
 
 ```sh

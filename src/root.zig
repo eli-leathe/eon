@@ -10,6 +10,7 @@ pub const MaterializedValue = Interpreter.MaterializedValue;
 pub const MaterializedField = Interpreter.MaterializedField;
 pub const Parse = @import("Parse.zig");
 pub const Tokenizer = @import("Tokenizer.zig");
+pub const Tree = @import("Tree.zig");
 
 test {
     _ = std.testing.refAllDecls(@This());

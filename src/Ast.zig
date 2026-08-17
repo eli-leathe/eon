@@ -22,6 +22,16 @@ pub const Error = struct {
 };
 
 pub const TokenIndex = u32;
+
+/// A node identity that is stable for the lifetime of one parsed AST.
+pub const NodeRef = struct {
+    index: Node.Index,
+};
+
+pub const SourceRange = struct {
+    start: usize,
+    end: usize,
+};
 pub const TokenList = std.MultiArrayList(struct {
     tag: Token.Tag,
     start: u32,
@@ -76,6 +86,10 @@ pub fn tokenStart(self: *const Ast, token_index: TokenIndex) u32 {
     return self.tokens.items(.start)[token_index];
 }
 
+pub fn tokenEnd(self: *const Ast, token_index: TokenIndex) usize {
+    return self.tokenStart(token_index) + self.tokenSlice(token_index).len;
+}
+
 pub fn tokenSlice(self: *const Ast, token_index: TokenIndex) []const u8 {
     const tag = self.tokenTag(token_index);
     if (tag.lexeme()) |lexeme| return lexeme;
@@ -95,6 +109,46 @@ pub fn nodeData(self: *const Ast, index: Node.Index) Node.Data {
 
 pub fn nodeMainToken(self: *const Ast, index: Node.Index) TokenIndex {
     return self.nodes.items(.main_token)[@intCast(@backingInt(index))];
+}
+
+pub fn nodeRange(self: *const Ast, index: Node.Index) SourceRange {
+    if (index == .root) return .{ .start = 0, .end = self.source.len };
+    return .{ .start = self.nodeStart(index), .end = self.nodeEnd(index) };
+}
+
+fn nodeStart(self: *const Ast, index: Node.Index) usize {
+    return switch (self.nodeData(index)) {
+        .declaration => |declaration| self.tokenStart(declaration.lhs),
+        .negation,
+        .map,
+        .boolean_literal,
+        .char_literal,
+        .number_literal,
+        .string_literal,
+        .atom_literal,
+        .identifier,
+        .array,
+        .group,
+        => self.tokenStart(self.nodeMainToken(index)),
+        inline .bool_or, .bool_and, .equal, .equal_equal, .add, .sub, .mul, .div => |binary| self.nodeStart(binary.lhs),
+        .field_access => |field| self.nodeStart(field.parent),
+        .apply => |application| self.nodeStart(application.func),
+    };
+}
+
+fn nodeEnd(self: *const Ast, index: Node.Index) usize {
+    return switch (self.nodeData(index)) {
+        .map => |map| self.tokenEnd(map[1]),
+        .declaration => |declaration| self.nodeEnd(declaration.rhs),
+        .negation => |operand| self.nodeEnd(operand),
+        .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => self.tokenEnd(self.nodeMainToken(index)),
+        .atom_literal => |name| self.tokenEnd(name),
+        .array => |array| self.tokenEnd(array[1]),
+        .group => |group| self.tokenEnd(group[1]),
+        inline .bool_or, .bool_and, .equal, .equal_equal, .add, .sub, .mul, .div => |binary| self.nodeEnd(binary.rhs),
+        .field_access => |field| self.tokenEnd(field.child),
+        .apply => |application| self.nodeEnd(application.arg),
+    };
 }
 
 pub fn deinit(self: *Ast, gpa: Allocator) Allocator.Error!void {
