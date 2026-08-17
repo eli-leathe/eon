@@ -112,7 +112,9 @@ var interpreter = Interpreter.initWithBindings(allocator, ast, &bindings);
 ```
 
 This allows an embedding layer to retain UI metadata while exposing the
-function's numeric result to configuration consumers.
+function's numeric result to configuration consumers. `TreeCursor` stores the
+argument's `Ast.NodeRef` and evaluates lazily through the interpreter cache;
+`argument.node()` returns that syntax node for semantic edits.
 
 Semantic edits can be rendered through three tree views:
 
