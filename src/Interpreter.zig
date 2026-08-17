@@ -147,38 +147,65 @@ const Evaluated = union(enum) {
 
 pub const TreeCursor = struct {
     interpreter: *Interpreter,
-    at: Evaluated,
+    at: Ast.NodeRef,
 
     pub const Tag = std.meta.Tag(Evaluated);
-    pub const MapError = error{ExpectedMap};
-    pub const ArrayError = error{ExpectedArray};
+    pub const MapError = EvaluationError;
+    pub const ArrayError = EvaluationError;
     pub const ValueError = EvaluationError;
 
-    pub fn tag(self: TreeCursor) Tag {
-        return std.meta.activeTag(self.at);
+    fn evaluated(self: TreeCursor) EvaluationError!Evaluated {
+        const current_node = self.at.index;
+        const parent_scope = if (current_node == .root)
+            Ast.Node.Index.root
+        else
+            self.interpreter.parent_scopes.get(current_node) orelse unreachable;
+        return self.interpreter.evaluateNode(current_node, parent_scope);
+    }
+
+    pub fn tag(self: TreeCursor) EvaluationError!Tag {
+        return std.meta.activeTag(try self.evaluated());
+    }
+
+    pub fn node(self: TreeCursor) Ast.NodeRef {
+        return self.at;
     }
 
     pub fn field(self: TreeCursor, name: []const u8) FieldError!TreeCursor {
         if (name.len == 0) return error.InvalidPath;
-        return .{
-            .interpreter = self.interpreter,
-            .at = try self.interpreter.getField(self.at, name),
+        const field_node, const parent_scope = switch (try self.evaluated()) {
+            .map => |map_node| .{
+                try self.interpreter.findDeclaration(map_node, name) orelse return error.MissingField,
+                map_node,
+            },
+            .array => |array_node| field: {
+                const index = std.fmt.parseInt(usize, name, 10) catch return error.MissingField;
+                const items = self.interpreter.ast.nodeData(array_node).array[0];
+                if (index >= items.len) return error.MissingField;
+                break :field .{
+                    items[index].value,
+                    self.interpreter.parent_scopes.get(array_node) orelse unreachable,
+                };
+            },
+            .value => return error.InvalidFieldAccess,
         };
+        try self.interpreter.parent_scopes.put(field_node, parent_scope);
+        return .{ .interpreter = self.interpreter, .at = .{ .index = field_node } };
     }
 
     pub fn value(self: TreeCursor) ValueError!Value {
-        return expectValue(self.at);
+        return expectValue(try self.evaluated());
     }
 
     /// Eagerly evaluates this cursor and all descendants.
     pub fn materialize(self: TreeCursor) ValueError!MaterializedValue {
-        return self.interpreter.materializeValue(self.at);
+        return self.interpreter.materializeValue(try self.evaluated());
     }
 
     pub fn map(self: TreeCursor) MapError!MapCursor {
         return .{
             .interpreter = self.interpreter,
-            .at = switch (self.at) {
+            .at = switch (try self.evaluated()) {
                 .map => |at| at,
                 .array, .value => return error.ExpectedMap,
             },
@@ -188,7 +215,7 @@ pub const TreeCursor = struct {
     pub fn array(self: TreeCursor) ArrayError!ArrayCursor {
         return .{
             .interpreter = self.interpreter,
-            .at = switch (self.at) {
+            .at = switch (try self.evaluated()) {
                 .array => |at| at,
                 .map, .value => return error.ExpectedArray,
             },
@@ -201,10 +228,9 @@ pub const MapCursor = struct {
 
     pub fn field(self: MapCursor, name: []const u8) FieldError!TreeCursor {
         if (name.len == 0) return error.InvalidPath;
-        return .{
-            .interpreter = self.interpreter,
-            .at = try self.interpreter.getField(.{ .map = self.at }, name),
-        };
+        const node = try self.interpreter.findDeclaration(self.at, name) orelse return error.MissingField;
+        try self.interpreter.parent_scopes.put(node, self.at);
+        return .{ .interpreter = self.interpreter, .at = .{ .index = node } };
     }
 
     /// Return the unevaluated syntax node for a field value. The reference is
@@ -254,13 +280,10 @@ pub const ArrayCursor = struct {
             else => unreachable,
         };
         if (index >= source_items.len) return error.IndexOutOfBounds;
-        return .{
-            .interpreter = self.interpreter,
-            .at = try self.interpreter.evaluateNode(
-                source_items[index].value,
-                self.interpreter.parent_scopes.get(self.at) orelse unreachable,
-            ),
-        };
+        const node = source_items[index].value;
+        const parent_scope = self.interpreter.parent_scopes.get(self.at) orelse unreachable;
+        try self.interpreter.parent_scopes.put(node, parent_scope);
+        return .{ .interpreter = self.interpreter, .at = .{ .index = node } };
     }
 
     pub fn items(self: ArrayCursor) ArrayItemIterator {
@@ -358,11 +381,11 @@ fn evaluateNode(
 
     const result: Evaluated = result: switch (self.ast.nodeData(node)) {
         .map => {
-            try self.parent_scopes.putNoClobber(node, parent_scope);
+            try self.parent_scopes.put(node, parent_scope);
             break :result .{ .map = node };
         },
         .array => {
-            try self.parent_scopes.putNoClobber(node, parent_scope);
+            try self.parent_scopes.put(node, parent_scope);
             break :result .{ .array = node };
         },
         .declaration => unreachable,
@@ -442,9 +465,10 @@ fn evaluateNode(
                 .function => |function| function,
                 else => return error.NotCallable,
             };
+            try self.parent_scopes.put(application.arg, parent_scope);
             const argument = TreeCursor{
                 .interpreter = self,
-                .at = try self.evaluateNode(application.arg, parent_scope),
+                .at = .{ .index = application.arg },
             };
             break :result .{ .value = try function.call(argument) };
         },
@@ -585,7 +609,7 @@ fn evaluateNodeOfType(
 
 pub fn cursor(self: *Interpreter) CursorError!TreeCursor {
     if (self.ast.errors.len != 0) return error.InvalidAst;
-    return .{ .interpreter = self, .at = .{ .map = .root } };
+    return .{ .interpreter = self, .at = .{ .index = .root } };
 }
 
 pub fn get(self: *Interpreter, path: []const u8) GetError!MaterializedValue {
@@ -704,9 +728,9 @@ test "evaluate paths and expressions" {
     try std.testing.expectEqual(MaterializedValue{ .number = 2 }, root_value[0].value);
     const nested_cursor = try root_cursor.field("nested");
     const answer_cursor = try nested_cursor.field("answer");
-    try std.testing.expectEqual(TreeCursor.Tag.map, root_cursor.tag());
-    try std.testing.expectEqual(TreeCursor.Tag.map, nested_cursor.tag());
-    try std.testing.expectEqual(TreeCursor.Tag.value, answer_cursor.tag());
+    try std.testing.expectEqual(TreeCursor.Tag.map, try root_cursor.tag());
+    try std.testing.expectEqual(TreeCursor.Tag.map, try nested_cursor.tag());
+    try std.testing.expectEqual(TreeCursor.Tag.value, try answer_cursor.tag());
     try std.testing.expectError(error.ExpectedValue, nested_cursor.value());
     const nested_value = (try nested_cursor.materialize()).record;
     try std.testing.expectEqualStrings("answer", nested_value[0].name);
@@ -848,7 +872,7 @@ test "array cursor visits items without materializing the array" {
     defer interpreter.deinit();
 
     const items_cursor = try (try interpreter.cursor()).field("items");
-    try std.testing.expectEqual(TreeCursor.Tag.array, items_cursor.tag());
+    try std.testing.expectEqual(TreeCursor.Tag.array, try items_cursor.tag());
     try std.testing.expectError(error.ExpectedMap, items_cursor.map());
 
     const array_cursor = try items_cursor.array();
@@ -858,10 +882,11 @@ test "array cursor visits items without materializing the array" {
     try std.testing.expectEqual(evaluated_node_count, interpreter.node_states.count());
 
     const first = (try items.next()).?;
-    try std.testing.expectEqual(TreeCursor.Tag.map, first.tag());
+    try std.testing.expectEqual(TreeCursor.Tag.map, try first.tag());
     try std.testing.expectEqualStrings("first", (try (try first.field("name")).value()).string);
 
-    try std.testing.expectError(error.UndefinedIdentifier, items.next());
+    const missing = (try items.next()).?;
+    try std.testing.expectError(error.UndefinedIdentifier, missing.value());
     const nested = try (try items.next()).?.array();
     try std.testing.expectEqual(@as(usize, 2), nested.len());
     try std.testing.expectEqual(Value{ .number = 3 }, try (try nested.item(0)).value());
