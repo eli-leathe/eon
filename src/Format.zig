@@ -297,6 +297,24 @@ fn lineBreakCount(bytes: []const u8) usize {
     return count;
 }
 
+test "source-less virtual tree formatting" {
+    var virtual: Tree.Virtual = .{};
+    defer virtual.deinit(std.testing.allocator);
+    const value = try virtual.addValue(std.testing.allocator, .{ .number = 5 });
+    const declaration = try virtual.addNode(std.testing.allocator, .{ .declaration = .{
+        .name = "speed",
+        .value = value,
+    } });
+    const declarations = [_]Tree.Virtual.NodeRef{declaration};
+    const root = try virtual.addNode(std.testing.allocator, .{ .root = &declarations });
+    virtual.setRoot(root);
+
+    var output: Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try renderTree(virtual.reader(), &output.writer);
+    try std.testing.expectEqualStrings("speed = 5\n", output.written());
+}
+
 test "merged formatting replaces a subtree with a virtual value" {
     const source =
         \\speed = 5 * 2 // retained
