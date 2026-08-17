@@ -124,14 +124,16 @@ Semantic edits can be rendered through three tree views:
 For example, a parsed expression can be replaced without mutating its AST:
 
 ```zig
+var parsed = eon.Tree.Parsed{ .ast = &ast };
 var virtual: eon.Tree.Virtual = .{};
 defer virtual.deinit(allocator);
 const replacement = try virtual.addValue(allocator, .{ .number = 42.5 });
+virtual.setRoot(replacement);
 
-var merged = eon.Tree.Merge.init(&ast, &virtual);
+var merged = eon.Tree.Merge.init(parsed.reader(), virtual.reader());
 defer merged.deinit(allocator);
-try merged.mount(allocator, value_node, replacement);
-try eon.Format.renderMerged(&merged, writer);
+try merged.mount(allocator, parsed.nodeFromRef(value_node), virtual.nodeFromRef(replacement));
+try eon.Format.renderTree(merged.reader(), writer);
 ```
 
 Other commands are listed by:

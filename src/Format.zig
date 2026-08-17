@@ -2,6 +2,7 @@ const std = @import("std");
 const Writer = std.Io.Writer;
 
 const Ast = @import("Ast.zig");
+const Syntax = @import("Syntax.zig");
 const Tree = @import("Tree.zig");
 
 const indent_width = 2;
@@ -9,25 +10,20 @@ const indent_width = 2;
 pub const RenderError = Writer.Error || error{UnsupportedVirtualNode};
 
 pub fn render(ast: *const Ast, writer: *Writer) Writer.Error!void {
-    renderInternal(ast, null, writer) catch |err| switch (err) {
+    var parsed = Tree.Parsed{ .ast = ast };
+    renderTree(parsed.reader(), writer) catch |err| switch (err) {
         error.UnsupportedVirtualNode => unreachable,
         else => |write_error| return write_error,
     };
 }
 
-pub fn renderMerged(tree: *const Tree.Merge, writer: *Writer) RenderError!void {
-    return renderInternal(tree.parsed.ast, tree, writer);
+pub fn renderTree(tree: Tree.Reader, writer: *Writer) RenderError!void {
+    var renderer = Render{ .tree = tree, .writer = writer };
+    try renderer.renderRoot();
 }
 
-fn renderInternal(ast: *const Ast, merge: ?*const Tree.Merge, writer: *Writer) RenderError!void {
-    std.debug.assert(ast.errors.len == 0);
-
-    var r: Render = .{
-        .ast = ast,
-        .merge = merge,
-        .writer = writer,
-    };
-    try r.renderRoot();
+pub fn renderMerged(tree: *const Tree.Merge, writer: *Writer) RenderError!void {
+    return renderTree(tree.reader(), writer);
 }
 
 const Space = enum {
@@ -37,8 +33,7 @@ const Space = enum {
 };
 
 const Render = struct {
-    ast: *const Ast,
-    merge: ?*const Tree.Merge,
+    tree: Tree.Reader,
     writer: *Writer,
     source_cursor: usize = 0,
     pending_space: Space = .none,
@@ -47,110 +42,128 @@ const Render = struct {
     wrote_anything: bool = false,
 
     fn renderRoot(r: *Render) RenderError!void {
-        for (r.ast.nodeData(.root).map[0]) |declaration| {
-            _ = try r.renderNode(declaration, .newline);
-        }
-        try r.renderGap(r.ast.source.len);
+        const root = r.tree.root();
+        std.debug.assert(root.kind() == .root);
+        for (0..root.childCount()) |i| try r.renderNode(root.child(i), .newline);
+        try r.renderGap(if (r.tree.source()) |source| source.len else 0);
     }
 
-    fn renderNode(r: *Render, index: Ast.Node.Index, space: Space) RenderError!void {
-        if (r.merge) |merge| if (merge.replacement(index)) |replacement| {
-            return r.renderVirtual(index, replacement, space);
-        };
-        const data = r.ast.nodeData(index);
-        switch (data) {
-            .map => |m| {
-                const declarations, const r_brace = m;
-                // r_brace == 0 for root, for root, never allow to compact
-                const multiline = declarations.len != 0 and r_brace != 0 and switch (r.ast.tokenTag(r_brace - 1)) {
-                    .nl, .semicolon => true,
-                    else => false,
-                };
+    fn renderNode(r: *Render, node: Tree.Node, space: Space) RenderError!void {
+        if (node.replacementRange()) |range| {
+            std.debug.assert(range.start >= r.source_cursor);
+            try r.renderGap(range.start);
+            try r.renderNodeBody(node, space);
+            r.source_cursor = range.end;
+            r.pending_space = space;
+            return;
+        }
+        return r.renderNodeBody(node, space);
+    }
 
-                try r.renderToken(r.ast.nodeMainToken(index), if (multiline) .newline else if (declarations.len == 0) .none else .space);
+    fn renderNodeBody(r: *Render, node: Tree.Node, space: Space) RenderError!void {
+        switch (node.kind()) {
+            .root => unreachable,
+            .map => {
+                const multiline = node.multiline();
+                try r.renderTokenRequired(node, 0, if (multiline) .newline else if (node.childCount() == 0) .none else .space);
 
                 if (multiline) r.indent += 1;
-                for (declarations, 0..) |declaration, i| {
-                    const last = i + 1 == declarations.len;
-                    try r.renderNode(declaration, if (multiline) .newline else if (last) .space else .none);
-
-                    // when inline, separate with "; "
+                for (0..node.childCount()) |i| {
+                    const last = i + 1 == node.childCount();
+                    try r.renderNode(node.child(i), if (multiline) .newline else if (last) .space else .none);
                     if (!multiline and !last) {
                         try r.writeAll(";");
                         r.pending_space = .space;
                     }
                 }
 
-                try r.prepareToken(r_brace);
+                const closing = node.token(1).?;
+                try r.prepareToken(closing);
                 if (multiline) r.indent -= 1;
-                try r.writePreparedToken(r_brace, space);
+                try r.writePreparedToken(closing, space);
             },
-            .declaration => |declaration| {
-                try r.renderToken(declaration.lhs, .space);
-                try r.renderToken(declaration.lhs + 1, .space); // '='
-                try r.renderNode(declaration.rhs, space);
+            .declaration => {
+                try r.renderTokenRequired(node, 0, .space);
+                try r.renderTokenRequired(node, 1, .space);
+                try r.renderNode(node.child(0), space);
             },
-            .negation => |operand| {
-                try r.renderToken(r.ast.nodeMainToken(index), .none);
-                try r.renderNode(operand, space);
+            .negation => {
+                try r.renderTokenRequired(node, 0, .none);
+                try r.renderNode(node.child(0), space);
             },
-            .boolean_literal, .char_literal, .number_literal, .string_literal, .identifier => {
-                const token = r.ast.nodeMainToken(index);
-                try r.renderToken(token, space);
+            .scalar, .identifier => try r.renderTokenRequired(node, 0, space),
+            .atom => {
+                try r.renderTokenRequired(node, 0, .none);
+                try r.renderTokenRequired(node, 1, space);
             },
-            .atom_literal => |name| {
-                try r.renderToken(r.ast.nodeMainToken(index), .none);
-                try r.renderToken(name, space);
-            },
-            .array => |array| {
-                const items, const r_bracket = array;
-                const multiline = items.len != 0 and items[items.len - 1].comma != null;
-                try r.renderToken(r.ast.nodeMainToken(index), if (multiline) .newline else .none);
+            .array => {
+                const multiline = node.multiline();
+                try r.renderTokenRequired(node, 0, if (multiline) .newline else .none);
                 if (multiline) r.indent += 1;
 
-                for (items) |item| {
-                    try r.renderNode(item.value, .none);
-                    if (item.comma) |comma| {
+                for (0..node.childCount()) |i| {
+                    try r.renderNode(node.child(i), .none);
+                    if (node.token(2 + i)) |comma|
                         try r.renderToken(comma, if (multiline) .newline else .space);
-                    }
                 }
 
+                const closing = node.token(1).?;
                 if (multiline) {
-                    try r.prepareToken(r_bracket);
+                    try r.prepareToken(closing);
                     r.indent -= 1;
-                    try r.writePreparedToken(r_bracket, space);
+                    try r.writePreparedToken(closing, space);
                 } else {
-                    try r.renderToken(r_bracket, space);
+                    try r.renderToken(closing, space);
                 }
             },
-            .group => |group| {
-                const expr, const r_paren = group;
-                try r.renderToken(r.ast.nodeMainToken(index), .none);
-                try r.renderNode(expr, .none);
-                try r.renderToken(r_paren, space);
+            .group => {
+                try r.renderTokenRequired(node, 0, .none);
+                try r.renderNode(node.child(0), .none);
+                try r.renderTokenRequired(node, 1, space);
             },
-            inline .bool_or, .bool_and, .equal, .equal_equal, .add, .sub, .mul, .div => |binary| {
-                try r.renderNode(binary.lhs, .space);
-                try r.renderToken(r.ast.nodeMainToken(index), .space);
-                try r.renderNode(binary.rhs, space);
+            .binary => {
+                try r.renderNode(node.child(0), .space);
+                try r.renderTokenRequired(node, 0, .space);
+                try r.renderNode(node.child(1), space);
             },
-            .field_access => |field| {
-                try r.renderNode(field.parent, .none);
-                try r.renderToken(r.ast.nodeMainToken(index), .none);
-                try r.renderToken(field.child, space);
+            .field_access => {
+                try r.renderNode(node.child(0), .none);
+                try r.renderTokenRequired(node, 0, .none);
+                try r.renderTokenRequired(node, 1, space);
             },
-            .apply => |apply| {
-                _ = try r.renderNode(apply.func, .space);
-                try r.renderNode(apply.arg, space);
+            .apply => {
+                try r.renderNode(node.child(0), .space);
+                try r.renderNode(node.child(1), space);
             },
         }
     }
 
-    fn renderVirtual(r: *Render, source_node: Ast.Node.Index, virtual_node: Tree.Virtual.Node, space: Space) RenderError!void {
-        const range = r.ast.nodeRange(source_node);
-        std.debug.assert(range.start >= r.source_cursor);
-        try r.renderGap(range.start);
-        switch (virtual_node) {
+    fn renderTokenRequired(r: *Render, node: Tree.Node, slot: usize, space: Space) RenderError!void {
+        return r.renderToken(node.token(slot).?, space);
+    }
+
+    fn renderToken(r: *Render, token: Tree.Token, space: Space) RenderError!void {
+        try r.prepareToken(token);
+        try r.writePreparedToken(token, space);
+    }
+
+    fn prepareToken(r: *Render, token: Tree.Token) RenderError!void {
+        if (token.range) |range| {
+            std.debug.assert(range.start >= r.source_cursor);
+            try r.renderGap(range.start);
+        } else {
+            try r.applyPendingSpace();
+        }
+    }
+
+    fn writePreparedToken(r: *Render, token: Tree.Token, space: Space) RenderError!void {
+        if (token.range) |range| std.debug.assert(r.source_cursor == range.start);
+        switch (token.content) {
+            .text => |text| try r.writeAll(text),
+            .identifier => |identifier| {
+                try r.beginDirectWrite();
+                try Syntax.writeIdentifier(identifier, r.writer);
+            },
             .value => |value| {
                 switch (value) {
                     .function => return error.UnsupportedVirtualNode,
@@ -161,37 +174,18 @@ const Render = struct {
                 try value.format(r.writer);
             },
         }
-        r.source_cursor = range.end;
+        if (token.range) |range| r.source_cursor = range.end;
         r.pending_space = space;
     }
 
-    fn renderToken(r: *Render, token_index: Ast.TokenIndex, space: Space) RenderError!void {
-        try r.prepareToken(token_index);
-        try r.writePreparedToken(token_index, space);
-    }
-
-    fn prepareToken(r: *Render, token_index: Ast.TokenIndex) RenderError!void {
-        const token_start = r.ast.tokenStart(token_index);
-        std.debug.assert(token_start >= r.source_cursor);
-        try r.renderGap(token_start);
-    }
-
-    fn writePreparedToken(r: *Render, token_index: Ast.TokenIndex, space: Space) RenderError!void {
-        const token_start = r.ast.tokenStart(token_index);
-        std.debug.assert(r.source_cursor == token_start);
-
-        const lexeme = r.ast.tokenSlice(token_index);
-        try r.writeAll(lexeme);
-        r.source_cursor = token_start + lexeme.len;
-        r.pending_space = space;
-    }
-
-    /// Canonicalize whitespace while preserving every line comment in the
-    /// source gap between two AST tokens. Ordinary comments intentionally do
-    /// not need tokens of their own; this is the same model used by zig fmt.
+    /// Canonicalize whitespace while preserving line comments supplied by a
+    /// source-backed tree. Source-less trees simply apply pending whitespace.
     fn renderGap(r: *Render, end: usize) RenderError!void {
+        const source = r.tree.source() orelse {
+            try r.applyPendingSpace();
+            return;
+        };
         std.debug.assert(end >= r.source_cursor);
-        const source = r.ast.source;
         var index = r.source_cursor;
         var found_comment = false;
 
@@ -206,17 +200,11 @@ const Render = struct {
             } else {
                 try r.ensureNewline();
                 const blank_line_threshold: usize = if (found_comment) 1 else 2;
-                if (r.wrote_anything and breaks_before >= blank_line_threshold) {
-                    try r.insertBlankLine();
-                }
+                if (r.wrote_anything and breaks_before >= blank_line_threshold) try r.insertBlankLine();
             }
 
             const comment_end = findLineEnd(source, comment_start, end);
-            const comment = std.mem.trimEnd(
-                u8,
-                source[comment_start..comment_end],
-                &std.ascii.whitespace,
-            );
+            const comment = std.mem.trimEnd(u8, source[comment_start..comment_end], &std.ascii.whitespace);
             try r.writeAll(comment);
             try r.ensureNewline();
 
@@ -227,20 +215,12 @@ const Render = struct {
         const remaining = source[index..end];
         if (found_comment) {
             r.pending_space = .none;
-            // Since the terminating newline of the final comment was already
-            // consumed, one further source newline represents an empty line.
-            if (end != source.len and lineBreakCount(remaining) != 0) {
-                try r.insertBlankLine();
-            }
+            if (end != source.len and lineBreakCount(remaining) != 0) try r.insertBlankLine();
         } else {
             const wanted_space = r.pending_space;
             try r.applyPendingSpace();
-            if (wanted_space == .newline and
-                end != source.len and
-                lineBreakCount(remaining) >= 2)
-            {
+            if (wanted_space == .newline and end != source.len and lineBreakCount(remaining) >= 2)
                 try r.insertBlankLine();
-            }
         }
 
         r.source_cursor = end;
@@ -266,12 +246,8 @@ const Render = struct {
 
     fn writeAll(r: *Render, bytes: []const u8) RenderError!void {
         if (bytes.len == 0) return;
-        if (r.line_start) {
-            try r.writer.splatByteAll(' ', r.indent * indent_width);
-            r.line_start = false;
-        }
+        try r.beginDirectWrite();
         try r.writer.writeAll(bytes);
-        r.wrote_anything = true;
     }
 
     fn ensureNewline(r: *Render) RenderError!void {
@@ -331,14 +307,16 @@ test "merged formatting replaces a subtree with a virtual value" {
     var ast = try @import("Parse.zig").parse(std.testing.allocator, arena.allocator(), source);
     defer ast.deinit(std.testing.allocator) catch unreachable;
 
-    const declaration = ast.nodeData(.root).map[0][0];
-    const value_node = ast.nodeData(declaration).declaration.rhs;
+    var parsed = Tree.Parsed{ .ast = &ast };
+    const value_node = parsed.reader().root().child(0).child(0);
     var virtual: Tree.Virtual = .{};
     defer virtual.deinit(std.testing.allocator);
     const replacement = try virtual.addValue(std.testing.allocator, .{ .number = 42.5 });
-    var merge = Tree.Merge.init(&ast, &virtual);
+    virtual.setRoot(replacement);
+    const overlay = virtual.reader();
+    var merge = Tree.Merge.init(parsed.reader(), overlay);
     defer merge.deinit(std.testing.allocator);
-    try merge.mount(std.testing.allocator, .{ .index = value_node }, replacement);
+    try merge.mount(std.testing.allocator, value_node, overlay.root());
 
     var output: Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
