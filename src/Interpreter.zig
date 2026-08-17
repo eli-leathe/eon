@@ -211,7 +211,8 @@ pub const MapCursor = struct {
     /// valid only for the AST owned by this interpreter.
     pub fn fieldNode(self: MapCursor, name: []const u8) FieldError!Ast.NodeRef {
         if (name.len == 0) return error.InvalidPath;
-        return .{ .index = try self.interpreter.findDeclaration(self.at, name) orelse error.MissingField };
+        const node = try self.interpreter.findDeclaration(self.at, name) orelse return error.MissingField;
+        return .{ .index = node };
     }
     pub fn fields(self: MapCursor) MapFieldIterator {
         return .{ .interpreter = self.interpreter, .at = self.at, .index = 0 };
